@@ -1,4 +1,4 @@
-// InstaReply — B2B Instagram Comment → DM SaaS schema
+// CampaignCue — B2B Instagram Comment → DM SaaS schema
 
 generator client {
   provider = "prisma-client"
@@ -86,6 +86,7 @@ model Workspace {
   dmLogs            DmLog[]
   webhookEvents     WebhookEvent[]
   billingEvents     BillingEvent[]
+  operationalEvents OperationalEvent[]
 
   @@index([ownerId])
 }
@@ -207,6 +208,24 @@ model BillingEvent {
   @@index([workspaceId])
 }
 
+model OperationalEvent {
+  id          String                @id @default(cuid())
+  workspaceId String?
+  source      OperationalEventSource
+  level       OperationalEventLevel @default(INFO)
+  message     String
+  payload     Json?
+  createdAt   DateTime              @default(now())
+  resolvedAt  DateTime?
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([source])
+  @@index([level])
+  @@index([createdAt])
+}
+
 enum WorkspaceRole {
   OWNER
   ADMIN
@@ -242,4 +261,17 @@ enum WebhookStatus {
   PENDING
   PROCESSED
   FAILED
+}
+
+enum OperationalEventSource {
+  WORKER
+  TOKEN_REFRESH
+  HEALTH
+  SYSTEM
+}
+
+enum OperationalEventLevel {
+  INFO
+  WARNING
+  ERROR
 }

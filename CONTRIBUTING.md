@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping make InstaReply better.
+Thanks for helping make CampaignCue better.
 
 This project is public because the core Instagram comment-to-DM engine should be inspectable, self-hostable, and useful to builders. The hosted SaaS will monetize managed infrastructure, agency workflows, analytics, reports, support, and templates.
 

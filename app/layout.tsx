@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "InstaReply - Instagram Comment to DM Automation for Businesses",
+  title: "CampaignCue - Instagram Comment to DM Campaign OS",
   description:
     "A B2B SaaS for sending Meta-compliant Instagram private replies when customers comment keywords on posts and reels.",
   keywords: [

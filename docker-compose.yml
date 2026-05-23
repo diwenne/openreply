@@ -1,11 +1,11 @@
-# InstaReply — Local Development Services
+# CampaignCue — Local Development Services
 # Run: docker-compose up -d
 
 services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_DB: instrareply
+      POSTGRES_DB: campaigncue
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:

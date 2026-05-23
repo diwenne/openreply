@@ -1,10 +1,10 @@
-# InstaReply
+# CampaignCue
 
 Open-source Instagram comment-to-DM automation for businesses, creators, and agencies.
 
-InstaReply turns comments like `LINK`, `PRICE`, or `GUIDE` into Meta-compliant private replies. The core engine is MIT licensed and self-hostable. The hosted SaaS layer is being built for agencies that want campaign templates, analytics, client reports, and managed reliability.
+CampaignCue turns comments like `LINK`, `PRICE`, or `GUIDE` into Meta-compliant private replies. The core engine is MIT licensed and self-hostable. The hosted SaaS layer is being built for agencies that want campaign templates, analytics, client reports, and managed reliability.
 
-[Roadmap](ROADMAP.md) | [Deployment](DEPLOYMENT.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Open-core model](docs/open-core.md)
+[Roadmap](ROADMAP.md) | [Deployment](DEPLOYMENT.md) | [Production readiness](docs/production-readiness.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Open-core model](docs/open-core.md)
 
 ## Why This Exists
 
@@ -13,12 +13,12 @@ Instagram comment-to-DM is one of the clearest social-commerce loops:
 ```text
 Customer comments "LINK" on a post or reel
 Meta sends a webhook
-InstaReply matches the keyword
+CampaignCue matches the keyword
 The worker sends a private reply using the comment ID
 The business gets a warm conversation
 ```
 
-Most tools in this market are broad chatbot platforms. InstaReply is intentionally narrower: a focused campaign operating system for Instagram comment-triggered DMs.
+Most tools in this market are broad chatbot platforms. CampaignCue is intentionally narrower: a focused campaign operating system for Instagram comment-triggered DMs.
 
 ## Current Product
 
@@ -28,9 +28,12 @@ Most tools in this market are broad chatbot platforms. InstaReply is intentional
 - Meta webhook verification and event storage.
 - BullMQ worker for private reply delivery.
 - Idempotent DM logs per automation/comment.
+- Atomic monthly usage reservations and Redis-backed hourly DM reservations.
 - Stripe Checkout, Customer Portal, and subscription webhooks.
 - Plan limits for automations and monthly DMs.
 - Vercel cron for token refresh and usage maintenance.
+- Health checks and authenticated production diagnostics.
+- Public Privacy, Terms, Data Deletion, and Meta App Review support pages.
 - Production deployment docs for Vercel, Railway, Postgres, and Redis.
 
 ## Demo
@@ -47,7 +50,7 @@ Then open:
 http://localhost:3000
 ```
 
-Screenshots and GIFs are planned in issue [#6](https://github.com/im-anishraj/instagram-comment-to-dm/issues/6). Good launch assets to add:
+Screenshots and GIFs are planned in issue [#17](https://github.com/im-anishraj/instagram-comment-to-dm/issues/17). Good launch assets to add:
 
 - Landing page hero screenshot.
 - Dashboard overview screenshot.

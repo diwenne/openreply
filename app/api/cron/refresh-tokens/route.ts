@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
     },
     select: {
       id: true,
+      workspaceId: true,
       username: true,
       accessToken: true,
     },
@@ -74,6 +75,19 @@ export async function GET(request: NextRequest) {
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      await prisma.operationalEvent.create({
+        data: {
+          workspaceId: account.workspaceId,
+          source: "TOKEN_REFRESH",
+          level: "ERROR",
+          message: `Token refresh failed for @${account.username}: ${errorMessage}`,
+          payload: {
+            instagramAccountId: account.id,
+            username: account.username,
+          },
+        },
+      });
+
       results.push({
         instagramAccountId: account.id,
         username: account.username,

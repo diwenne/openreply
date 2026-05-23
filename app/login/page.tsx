@@ -1,7 +1,7 @@
 import { signIn } from "@/lib/auth";
 
 export const metadata = {
-  title: "Login — InstaReply",
+  title: "Login - CampaignCue",
   description: "Sign in to manage Instagram comment-to-DM automations.",
 };
 
@@ -42,7 +42,7 @@ export default async function LoginPage({
             </svg>
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            InstaReply
+            CampaignCue
           </h1>
           <p className="text-muted text-sm leading-relaxed mt-2">
             Sign in by email, then connect your Instagram professional account.

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "InstaReply - Instagram Comment to DM Automation for Businesses",
+  title: "CampaignCue - Instagram Comment to DM Campaign OS",
   description:
     "A premium self-serve SaaS for turning Instagram keyword comments into Meta-compliant private replies, lead capture, and campaign growth.",
 };
@@ -128,7 +128,7 @@ const pricingTiers = [
 
 const faqs = [
   {
-    question: "Does InstaReply use the official Meta API?",
+    question: "Does CampaignCue use the official Meta API?",
     answer:
       "Yes. The product is built around Meta webhooks and Instagram private replies, not scraping, browser automation, or password sharing.",
   },
@@ -362,11 +362,11 @@ export default function Home() {
 
       <header className="sticky top-0 z-40 border-b border-white/10 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-5 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3" aria-label="InstaReply home">
+          <Link href="/" className="flex items-center gap-3" aria-label="CampaignCue home">
             <span className="flex h-9 w-9 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-sm font-black text-cyan-100">
-              IR
+              CC
             </span>
-            <span className="text-lg font-bold text-white">InstaReply</span>
+            <span className="text-lg font-bold text-white">CampaignCue</span>
           </Link>
 
           <nav className="hidden items-center gap-7 md:flex">
@@ -411,7 +411,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-300">
-            InstaReply turns keyword comments on posts and reels into private
+            CampaignCue turns keyword comments on posts and reels into private
             replies, campaign logs, and measurable lead capture for businesses,
             creators, and agencies.
           </p>
@@ -704,9 +704,9 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 text-sm text-zinc-500 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-xs font-black text-cyan-100">
-              IR
+              CC
             </span>
-            <span>InstaReply</span>
+            <span>CampaignCue</span>
           </div>
           <div className="flex flex-wrap gap-4">
             {navLinks.map((link) => (
@@ -716,6 +716,18 @@ export default function Home() {
             ))}
             <Link href="/login" className="transition hover:text-white">
               Sign in
+            </Link>
+            <Link href="/privacy" className="transition hover:text-white">
+              Privacy
+            </Link>
+            <Link href="/terms" className="transition hover:text-white">
+              Terms
+            </Link>
+            <Link href="/data-deletion" className="transition hover:text-white">
+              Data deletion
+            </Link>
+            <Link href="/meta-review" className="transition hover:text-white">
+              Meta review
             </Link>
           </div>
         </div>

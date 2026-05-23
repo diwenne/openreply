@@ -4,11 +4,12 @@ import { prisma } from "@/lib/db/client";
 import { MetaApiError, sendPrivateReply } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
-import { checkRateLimit, incrementDMCounter } from "@/lib/utils/rate-limiter";
+import { reserveDMSlot } from "@/lib/utils/rate-limiter";
 import {
-  canSendDMForWorkspace,
-  incrementWorkspaceDMUsage,
+  releaseWorkspaceDMReservation,
+  reserveWorkspaceDMSend,
 } from "@/lib/billing/usage";
+import { recordWorkerAlert } from "@/lib/ops/worker-health";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -74,109 +75,6 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       existingLog?.status === "SKIPPED_RATE_LIMIT"
     ) {
       continue;
-    }
-
-    const usage = await canSendDMForWorkspace(automation.workspaceId);
-    if (!usage.allowed) {
-      await prisma.dmLog.upsert({
-        where: {
-          automationId_commentId: {
-            automationId: automation.id,
-            commentId,
-          },
-        },
-        create: {
-          workspaceId: automation.workspaceId,
-          automationId: automation.id,
-          instagramAccountId: automation.instagramAccountId,
-          commenterId,
-          commenterName,
-          commentText,
-          commentId,
-          matchedKeyword: matchResult.matchedKeyword,
-          status: "SKIPPED_PLAN_LIMIT",
-          errorMessage: `Monthly DM limit reached (${usage.limit})`,
-        },
-        update: {
-          status: "SKIPPED_PLAN_LIMIT",
-          matchedKeyword: matchResult.matchedKeyword,
-          errorMessage: `Monthly DM limit reached (${usage.limit})`,
-        },
-      });
-      continue;
-    }
-
-    const rateLimit = await checkRateLimit(instagramAccountId, requeueAttempt);
-    if (!rateLimit.allowed) {
-      if (rateLimit.shouldSkip) {
-        await prisma.dmLog.upsert({
-          where: {
-            automationId_commentId: {
-              automationId: automation.id,
-              commentId,
-            },
-          },
-          create: {
-            workspaceId: automation.workspaceId,
-            automationId: automation.id,
-            instagramAccountId: automation.instagramAccountId,
-            commenterId,
-            commenterName,
-            commentText,
-            commentId,
-            matchedKeyword: matchResult.matchedKeyword,
-            status: "SKIPPED_RATE_LIMIT",
-            errorMessage: "Hourly Instagram DM rate limit reached",
-          },
-          update: {
-            status: "SKIPPED_RATE_LIMIT",
-            matchedKeyword: matchResult.matchedKeyword,
-            errorMessage: "Hourly Instagram DM rate limit reached",
-          },
-        });
-        continue;
-      }
-
-      if (rateLimit.shouldRequeue) {
-        await prisma.dmLog.upsert({
-          where: {
-            automationId_commentId: {
-              automationId: automation.id,
-              commentId,
-            },
-          },
-          create: {
-            workspaceId: automation.workspaceId,
-            automationId: automation.id,
-            instagramAccountId: automation.instagramAccountId,
-            commenterId,
-            commenterName,
-            commentText,
-            commentId,
-            matchedKeyword: matchResult.matchedKeyword,
-            status: "PENDING",
-            errorMessage: "Hourly rate limit hit; retry scheduled",
-          },
-          update: {
-            status: "PENDING",
-            matchedKeyword: matchResult.matchedKeyword,
-            errorMessage: "Hourly rate limit hit; retry scheduled",
-          },
-        });
-
-        await getDMQueue().add(
-          "process-comment",
-          {
-            ...job.data,
-            requeueAttempt: requeueAttempt + 1,
-          },
-          {
-            delay: rateLimit.requeueDelayMs,
-            jobId: `comment:${instagramAccountId}:${commentId}:retry:${requeueAttempt + 1}`,
-          }
-        );
-        continue;
-      }
     }
 
     if (!automation.instagramAccount.accessToken) {
@@ -266,22 +164,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       },
     });
 
-    const dmMessage = automation.dmMessage.replace(
-      /\{username\}/gi,
-      commenterName ?? "there"
-    );
-
-    try {
-      await sendPrivateReply(
-        accessToken,
-        automation.instagramAccount.instagramId,
-        commentId,
-        dmMessage
-      );
-
-      await incrementDMCounter(instagramAccountId);
-      await incrementWorkspaceDMUsage(automation.workspaceId);
-
+    const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+    if (!usage.allowed) {
       await prisma.dmLog.update({
         where: {
           automationId_commentId: {
@@ -290,12 +174,22 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           },
         },
         data: {
-          status: "SENT",
-          dmSentAt: new Date(),
-          errorMessage: null,
+          status: "SKIPPED_PLAN_LIMIT",
+          matchedKeyword: matchResult.matchedKeyword,
+          errorMessage: `Monthly DM limit reached (${usage.limit})`,
         },
       });
+      continue;
+    }
+
+    let rateLimit;
+    try {
+      rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
     } catch (error) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart
+      );
       await prisma.dmLog.update({
         where: {
           automationId_commentId: {
@@ -311,6 +205,150 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       });
       throw error;
     }
+
+    if (!rateLimit.allowed) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart
+      );
+
+      if (rateLimit.shouldSkip) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId,
+            },
+          },
+          data: {
+            status: "SKIPPED_RATE_LIMIT",
+            matchedKeyword: matchResult.matchedKeyword,
+            errorMessage: "Hourly Instagram DM rate limit reached",
+          },
+        });
+        continue;
+      }
+
+      if (rateLimit.shouldRequeue) {
+        await prisma.dmLog.update({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId,
+            },
+          },
+          data: {
+            status: "PENDING",
+            matchedKeyword: matchResult.matchedKeyword,
+            errorMessage: "Hourly rate limit hit; retry scheduled",
+          },
+        });
+
+        await getDMQueue().add(
+          "process-comment",
+          {
+            ...job.data,
+            requeueAttempt: requeueAttempt + 1,
+          },
+          {
+            delay: rateLimit.requeueDelayMs,
+            jobId: `comment:${instagramAccountId}:${commentId}:retry:${requeueAttempt + 1}`,
+          }
+        );
+        continue;
+      }
+    }
+
+    const dmMessage = automation.dmMessage.replace(
+      /\{username\}/gi,
+      commenterName ?? "there"
+    );
+
+    try {
+      await sendPrivateReply(
+        accessToken,
+        automation.instagramAccount.instagramId,
+        commentId,
+        dmMessage
+      );
+
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId,
+          },
+        },
+        data: {
+          status: "SENT",
+          dmSentAt: new Date(),
+          errorMessage: null,
+        },
+      });
+    } catch (error) {
+      await releaseWorkspaceDMReservation(
+        automation.workspaceId,
+        usage.periodStart
+      );
+
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: {
+            automationId: automation.id,
+            commentId,
+          },
+        },
+        data: {
+          status: "FAILED",
+          attempts: job.attemptsMade + 1,
+          errorMessage: formatError(error),
+        },
+      });
+      throw error;
+    }
+  }
+}
+
+async function recordWorkerFailure(
+  job: Job<ProcessCommentJob> | undefined,
+  error: Error
+) {
+  try {
+    const instagramAccountId = job?.data.instagramAccountId;
+    const account = instagramAccountId
+      ? await prisma.instagramAccount.findUnique({
+          where: { instagramId: instagramAccountId },
+          select: { workspaceId: true },
+        })
+      : null;
+
+    await prisma.operationalEvent.create({
+      data: {
+        workspaceId: account?.workspaceId ?? null,
+        source: "WORKER",
+        level: "ERROR",
+        message: `DM worker job ${job?.id ?? "unknown"} failed: ${error.message}`,
+        payload: {
+          jobId: job?.id ?? null,
+          attemptsMade: job?.attemptsMade ?? null,
+          instagramAccountId: instagramAccountId ?? null,
+          commentId: job?.data.commentId ?? null,
+        },
+      },
+    });
+
+    await recordWorkerAlert({
+      level: "error",
+      message: error.message,
+      jobId: job?.id,
+      instagramAccountId,
+      commentId: job?.data.commentId,
+    });
+  } catch (recordError) {
+    console.error(
+      "[DM Worker] Failed to record worker failure:",
+      formatError(recordError)
+    );
   }
 }
 
@@ -337,10 +375,26 @@ export function createDMWorker(): Worker<ProcessCommentJob> {
       `[DM Worker] Job ${job?.id} failed (attempt ${job?.attemptsMade}):`,
       err.message
     );
+    void recordWorkerFailure(job, err);
   });
 
   worker.on("error", (err) => {
     console.error("[DM Worker] Worker error:", err.message);
+    void prisma.operationalEvent
+      .create({
+        data: {
+          source: "WORKER",
+          level: "ERROR",
+          message: `DM worker process error: ${err.message}`,
+          payload: { name: err.name },
+        },
+      })
+      .catch((recordError) => {
+        console.error(
+          "[DM Worker] Failed to record worker process error:",
+          formatError(recordError)
+        );
+      });
   });
 
   return worker;

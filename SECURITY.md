@@ -1,6 +1,6 @@
 # Security Policy
 
-InstaReply handles Instagram account tokens, webhook payloads, billing events, and customer campaign data. Please report security issues responsibly.
+CampaignCue handles Instagram account tokens, webhook payloads, billing events, and customer campaign data. Please report security issues responsibly.
 
 ## Supported Versions
 
@@ -35,6 +35,12 @@ Pay special attention to:
 - Tracked link redirects.
 - Worker retry and dedupe behavior.
 - Environment variable handling.
+
+## Dependency Audit Exceptions
+
+Production dependency audit status is tracked in [docs/production-readiness.md](docs/production-readiness.md).
+
+As of May 24, 2026, the known audit exceptions are a `postcss` advisory pulled through the current stable `next@16.2.6` release and a Prisma CLI tooling advisory through `@hono/node-server`. CampaignCue does not process customer-authored CSS, and Prisma development tooling should not run on public infrastructure. Maintainers should upgrade Next.js and Prisma as soon as patched stable releases are available.
 
 ## Secrets
 

@@ -30,6 +30,57 @@ export interface RateLimitResult {
   shouldRequeue: boolean;
   requeueDelayMs: number;
   shouldSkip: boolean;
+  reserved: boolean;
+}
+
+const RESERVE_DM_SLOT_SCRIPT = `
+local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+local max = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
+
+if current >= max then
+  return {0, current, 0}
+end
+
+local next_count = redis.call("INCR", KEYS[1])
+if next_count == 1 then
+  redis.call("EXPIRE", KEYS[1], ttl)
+end
+
+return {1, next_count, max - next_count}
+`;
+
+function toScriptNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number.parseInt(value, 10);
+  return 0;
+}
+
+function blockedResult(
+  count: number,
+  requeueAttempt: number
+): RateLimitResult {
+  if (requeueAttempt >= MAX_REQUEUE_ATTEMPTS) {
+    return {
+      allowed: false,
+      currentCount: count,
+      remainingDMs: 0,
+      shouldRequeue: false,
+      requeueDelayMs: 0,
+      shouldSkip: true,
+      reserved: false,
+    };
+  }
+
+  return {
+    allowed: false,
+    currentCount: count,
+    remainingDMs: 0,
+    shouldRequeue: true,
+    requeueDelayMs: REQUEUE_DELAY_MS,
+    shouldSkip: false,
+    reserved: false,
+  };
 }
 
 /**
@@ -63,6 +114,7 @@ export async function checkRateLimit(
         shouldRequeue: false,
         requeueDelayMs: 0,
         shouldSkip: true,
+        reserved: false,
       };
     }
 
@@ -73,6 +125,7 @@ export async function checkRateLimit(
       shouldRequeue: true,
       requeueDelayMs: REQUEUE_DELAY_MS,
       shouldSkip: false,
+      reserved: false,
     };
   }
 
@@ -83,27 +136,58 @@ export async function checkRateLimit(
     shouldRequeue: false,
     requeueDelayMs: 0,
     shouldSkip: false,
+    reserved: false,
   };
 }
 
 /**
- * Increment the DM counter for an Instagram account.
- * Called after a DM is successfully sent.
+ * Atomically reserve a DM send slot for an Instagram account.
+ * This is the worker-safe path; it prevents concurrent jobs from all passing
+ * the rate-limit check before any of them increments the Redis counter.
+ */
+export async function reserveDMSlot(
+  instagramAccountId: string,
+  requeueAttempt: number = 0
+): Promise<RateLimitResult> {
+  const client = getRedis();
+  const key = `rate:dm:${instagramAccountId}`;
+
+  const result = await client.eval(
+    RESERVE_DM_SLOT_SCRIPT,
+    1,
+    key,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_WINDOW
+  );
+  const values = Array.isArray(result) ? result : [];
+  const allowedFlag = toScriptNumber(values[0]);
+  const count = toScriptNumber(values[1]);
+  const remaining = toScriptNumber(values[2]);
+
+  if (allowedFlag !== 1) {
+    return blockedResult(count, requeueAttempt);
+  }
+
+  return {
+    allowed: true,
+    currentCount: count,
+    remainingDMs: remaining,
+    shouldRequeue: false,
+    requeueDelayMs: 0,
+    shouldSkip: false,
+    reserved: true,
+  };
+}
+
+/**
+ * Backwards-compatible helper for tests and admin scripts.
+ * Prefer reserveDMSlot in workers.
  */
 export async function incrementDMCounter(
   instagramAccountId: string
 ): Promise<number> {
-  const client = getRedis();
-  const key = `rate:dm:${instagramAccountId}`;
-
-  const pipeline = client.pipeline();
-  pipeline.incr(key);
-  pipeline.expire(key, RATE_LIMIT_WINDOW);
-  const results = await pipeline.exec();
-
-  // Return the new count
-  const incrResult = results?.[0];
-  return (incrResult?.[1] as number) ?? 0;
+  const result = await reserveDMSlot(instagramAccountId, MAX_REQUEUE_ATTEMPTS);
+  return result.currentCount;
 }
 
 /**

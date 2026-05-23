@@ -1,6 +1,6 @@
 # Meta App Review Notes
 
-InstaReply uses the official Instagram API to send private replies to people who comment on a connected Instagram professional account's post or reel.
+CampaignCue uses the official Instagram API to send private replies to people who comment on a connected Instagram professional account's post or reel.
 
 ## Permissions To Request
 
@@ -10,7 +10,7 @@ InstaReply uses the official Instagram API to send private replies to people who
 
 ## Review Demo Script
 
-1. Sign in to InstaReply with an email magic link.
+1. Sign in to CampaignCue with an email magic link.
 2. Connect an Instagram Business or Creator account.
 3. Create an automation for a recent reel/post with keyword `LINK`.
 4. From a tester Instagram account, comment `LINK` on that reel/post.

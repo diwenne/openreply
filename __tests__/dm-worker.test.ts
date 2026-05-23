@@ -5,11 +5,10 @@ const {
   mockSendPrivateReply,
   mockDecryptToken,
   mockMatchKeywords,
-  mockCheckRateLimit,
-  mockIncrementDMCounter,
+  mockReserveDMSlot,
   mockQueueAdd,
-  mockCanSendDMForWorkspace,
-  mockIncrementWorkspaceDMUsage,
+  mockReserveWorkspaceDMSend,
+  mockReleaseWorkspaceDMReservation,
 } = vi.hoisted(() => ({
   mockPrisma: {
     automation: {
@@ -20,15 +19,20 @@ const {
       upsert: vi.fn(),
       update: vi.fn(),
     },
+    instagramAccount: {
+      findUnique: vi.fn(),
+    },
+    operationalEvent: {
+      create: vi.fn(),
+    },
   },
   mockSendPrivateReply: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
-  mockCheckRateLimit: vi.fn(),
-  mockIncrementDMCounter: vi.fn(),
+  mockReserveDMSlot: vi.fn(),
   mockQueueAdd: vi.fn(),
-  mockCanSendDMForWorkspace: vi.fn(),
-  mockIncrementWorkspaceDMUsage: vi.fn(),
+  mockReserveWorkspaceDMSend: vi.fn(),
+  mockReleaseWorkspaceDMReservation: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -61,13 +65,16 @@ vi.mock("@/lib/utils/keyword-matcher", () => ({
 }));
 
 vi.mock("@/lib/utils/rate-limiter", () => ({
-  checkRateLimit: mockCheckRateLimit,
-  incrementDMCounter: mockIncrementDMCounter,
+  reserveDMSlot: mockReserveDMSlot,
 }));
 
 vi.mock("@/lib/billing/usage", () => ({
-  canSendDMForWorkspace: mockCanSendDMForWorkspace,
-  incrementWorkspaceDMUsage: mockIncrementWorkspaceDMUsage,
+  reserveWorkspaceDMSend: mockReserveWorkspaceDMSend,
+  releaseWorkspaceDMReservation: mockReleaseWorkspaceDMReservation,
+}));
+
+vi.mock("@/lib/ops/worker-health", () => ({
+  recordWorkerAlert: vi.fn(),
 }));
 
 vi.mock("@/lib/queue/client", () => ({
@@ -91,6 +98,8 @@ vi.mock("bullmq", () => {
 });
 
 import { createDMWorker } from "../lib/queue/dm-worker";
+
+const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
 
 const mockAutomation = {
   id: "auto_789",
@@ -148,23 +157,29 @@ beforeEach(() => {
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockResolvedValue({});
+  mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+    workspaceId: "workspace_123",
+  });
+  mockPrisma.operationalEvent.create.mockResolvedValue({});
   mockDecryptToken.mockReturnValue("decrypted_token");
   mockMatchKeywords.mockReturnValue({ matched: true, matchedKeyword: "LINK" });
-  mockCanSendDMForWorkspace.mockResolvedValue({
+  mockReserveWorkspaceDMSend.mockResolvedValue({
     allowed: true,
+    reserved: true,
     remaining: 100,
     limit: 2000,
+    periodStart: usagePeriodStart,
   });
-  mockCheckRateLimit.mockResolvedValue({
+  mockReserveDMSlot.mockResolvedValue({
     allowed: true,
-    currentCount: 10,
-    remainingDMs: 180,
+    currentCount: 11,
+    remainingDMs: 179,
     shouldRequeue: false,
     requeueDelayMs: 0,
     shouldSkip: false,
+    reserved: true,
   });
-  mockIncrementDMCounter.mockResolvedValue(11);
-  mockIncrementWorkspaceDMUsage.mockResolvedValue({});
+  mockReleaseWorkspaceDMReservation.mockResolvedValue({ count: 1 });
   mockSendPrivateReply.mockResolvedValue({
     recipient_id: "commenter_999",
     message_id: "msg_001",
@@ -194,16 +209,8 @@ describe("DM Worker — Full Pipeline", () => {
       ["LINK", "PRICE"],
       true
     );
-    expect(mockPrisma.dmLog.findUnique).toHaveBeenCalledWith({
-      where: {
-        automationId_commentId: {
-          automationId: "auto_789",
-          commentId: "comment_555",
-        },
-      },
-    });
-    expect(mockCanSendDMForWorkspace).toHaveBeenCalledWith("workspace_123");
-    expect(mockCheckRateLimit).toHaveBeenCalledWith("ig_456", 0);
+    expect(mockReserveWorkspaceDMSend).toHaveBeenCalledWith("workspace_123");
+    expect(mockReserveDMSlot).toHaveBeenCalledWith("ig_456", 0);
     expect(mockDecryptToken).toHaveBeenCalledWith("encrypted_token_abc");
     expect(mockSendPrivateReply).toHaveBeenCalledWith(
       "decrypted_token",
@@ -211,8 +218,7 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Hey commenter_user! Here is the link: https://example.com"
     );
-    expect(mockIncrementDMCounter).toHaveBeenCalledWith("ig_456");
-    expect(mockIncrementWorkspaceDMUsage).toHaveBeenCalledWith("workspace_123");
+    expect(mockReleaseWorkspaceDMReservation).not.toHaveBeenCalled();
     expect(mockPrisma.dmLog.update).toHaveBeenCalledWith({
       where: {
         automationId_commentId: {
@@ -241,6 +247,7 @@ describe("DM Worker — Full Pipeline", () => {
     await processor(createMockJob());
 
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
   });
 
   it("should skip duplicate comments already sent", async () => {
@@ -253,21 +260,48 @@ describe("DM Worker — Full Pipeline", () => {
     await processor(createMockJob());
 
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
   });
 
-  it("should requeue when rate limited", async () => {
-    mockCheckRateLimit.mockResolvedValue({
+  it("should skip when monthly plan limit is reached", async () => {
+    mockReserveWorkspaceDMSend.mockResolvedValue({
+      allowed: false,
+      reserved: false,
+      remaining: 0,
+      limit: 100,
+      periodStart: usagePeriodStart,
+    });
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockReserveDMSlot).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SKIPPED_PLAN_LIMIT" }),
+      })
+    );
+  });
+
+  it("should requeue and release monthly usage when rate limited", async () => {
+    mockReserveDMSlot.mockResolvedValue({
       allowed: false,
       currentCount: 190,
       remainingDMs: 0,
       shouldRequeue: true,
       requeueDelayMs: 1800000,
       shouldSkip: false,
+      reserved: false,
     });
 
     const processor = getProcessor();
     await processor(createMockJob());
 
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
+      "workspace_123",
+      usagePeriodStart
+    );
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "process-comment",
@@ -283,33 +317,42 @@ describe("DM Worker — Full Pipeline", () => {
   });
 
   it("should skip with SKIPPED_RATE_LIMIT after max requeue attempts", async () => {
-    mockCheckRateLimit.mockResolvedValue({
+    mockReserveDMSlot.mockResolvedValue({
       allowed: false,
       currentCount: 190,
       remainingDMs: 0,
       shouldRequeue: false,
       requeueDelayMs: 0,
       shouldSkip: true,
+      reserved: false,
     });
 
     const processor = getProcessor();
     await processor(createMockJob());
 
-    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
+      "workspace_123",
+      usagePeriodStart
+    );
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ status: "SKIPPED_RATE_LIMIT" }),
+        data: expect.objectContaining({ status: "SKIPPED_RATE_LIMIT" }),
       })
     );
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
   });
 
-  it("should log FAILED when private reply sending fails and re-throw", async () => {
+  it("should log FAILED, release usage, and re-throw when private reply sending fails", async () => {
     const error = new Error("API Error");
     mockSendPrivateReply.mockRejectedValue(error);
 
     const processor = getProcessor();
 
     await expect(processor(createMockJob())).rejects.toThrow("API Error");
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
+      "workspace_123",
+      usagePeriodStart
+    );
     expect(mockPrisma.dmLog.update).toHaveBeenCalledWith({
       where: {
         automationId_commentId: {
@@ -346,6 +389,7 @@ describe("DM Worker — Full Pipeline", () => {
         }),
       })
     );
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
   });
 

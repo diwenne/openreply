@@ -4,7 +4,7 @@ This document turns the roadmap into a practical launch sequence.
 
 ## Positioning
 
-InstaReply should not launch as a generic chatbot builder.
+CampaignCue should not launch as a generic chatbot builder.
 
 Launch message:
 
@@ -79,7 +79,7 @@ First loop: public templates.
 Second loop: shareable reports.
 
 - Agencies send reports to clients.
-- Free plan reports include subtle InstaReply branding.
+- Free plan reports include subtle CampaignCue branding.
 - Reports show campaign proof.
 
 Third loop: contributor loop.
