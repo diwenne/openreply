@@ -81,6 +81,7 @@ Second loop: shareable reports.
 - Agencies send reports to clients.
 - Free plan reports include subtle CampaignCue branding.
 - Reports show campaign proof.
+- Reports expose campaign results only, not workspace controls.
 
 Third loop: contributor loop.
 

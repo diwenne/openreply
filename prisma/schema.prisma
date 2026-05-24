@@ -140,6 +140,8 @@ model Automation {
   dmMessage      String
   isActive       Boolean @default(true)
   wholeWordMatch Boolean @default(true)
+  reportShareSlug    String? @unique
+  reportShareEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -8,7 +8,7 @@ This roadmap is optimized for three goals:
 
 ## Phase 0: Foundation
 
-Status: merged through issue [#10](https://github.com/im-anishraj/instagram-comment-to-dm/issues/10).
+Status: merged through issue [#11](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11).
 
 - Email magic-link auth.
 - Workspace tenancy.
@@ -56,7 +56,7 @@ Issue: [#9 Public campaign templates](https://github.com/im-anishraj/instagram-c
 Issues:
 
 - [#10 Tracked links and analytics](https://github.com/im-anishraj/instagram-comment-to-dm/issues/10) - done
-- [#11 Shareable client reports](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11)
+- [#11 Shareable client reports](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11) - done
 
 Planned work:
 

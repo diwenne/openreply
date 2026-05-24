@@ -19,6 +19,9 @@ interface Campaign {
   dmMessage: string;
   isActive: boolean;
   wholeWordMatch: boolean;
+  reportShareSlug: string | null;
+  reportShareEnabled: boolean;
+  reportUrl: string | null;
   createdAt: string;
   _count: { dmLogs: number };
   trackedLinks: Array<{
@@ -73,6 +76,25 @@ export default function CampaignsPage() {
       );
     } catch (err) {
       console.error("Failed to toggle:", err);
+    }
+  }
+
+  async function toggleReport(id: string, reportShareEnabled: boolean) {
+    try {
+      await fetch(`/api/automations?id=${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportShareEnabled: !reportShareEnabled }),
+      });
+      setAutomations((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? { ...a, reportShareEnabled: !reportShareEnabled }
+            : a
+        )
+      );
+    } catch (err) {
+      console.error("Failed to toggle report:", err);
     }
   }
 
@@ -211,6 +233,53 @@ export default function CampaignsPage() {
                       >
                         Open
                       </a>
+                    </div>
+                  </div>
+                )}
+
+                {auto.reportUrl && (
+                  <div className="mt-4 rounded-xl border border-border bg-surface/70 p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                          Client report
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted">
+                          {auto.reportUrl}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleReport(auto.id, auto.reportShareEnabled)
+                          }
+                          className={`inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            auto.reportShareEnabled
+                              ? "border-success/20 text-success hover:bg-success/10"
+                              : "border-border text-muted hover:border-border-hover hover:text-foreground"
+                          }`}
+                        >
+                          {auto.reportShareEnabled ? "Public" : "Disabled"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void navigator.clipboard?.writeText(auto.reportUrl ?? "")
+                          }
+                          className="inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                        >
+                          Copy
+                        </button>
+                        <a
+                          href={auto.reportUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                        >
+                          View
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}
