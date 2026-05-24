@@ -90,6 +90,12 @@ Third loop: contributor loop.
 - Public roadmap.
 - Discussions for campaign ideas.
 
+Fourth loop: agency expansion.
+
+- Agency workspaces connect multiple client Instagram accounts.
+- Owners and admins invite teammates with role-based access.
+- Campaign, log, and dashboard views filter by account for cleaner client operations.
+
 ## Revenue Plan
 
 Initial paid packaging:

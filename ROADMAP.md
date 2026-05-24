@@ -8,7 +8,7 @@ This roadmap is optimized for three goals:
 
 ## Phase 0: Foundation
 
-Status: merged through issue [#11](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11).
+Status: merged through issue [#12](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12).
 
 - Email magic-link auth.
 - Workspace tenancy.
@@ -70,7 +70,7 @@ Planned work:
 
 Issues:
 
-- [#12 Agency multi-account support](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12)
+- [#12 Agency multi-account support](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12) - done
 - [#13 Founding agency offer and referrals](https://github.com/im-anishraj/instagram-comment-to-dm/issues/13)
 
 Planned work:

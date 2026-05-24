@@ -37,6 +37,7 @@ Most tools in this market are broad chatbot platforms. CampaignCue is intentiona
 - Public campaign template library.
 - Tracked redirect links with click, CTR, and keyword analytics.
 - Shareable read-only client report pages.
+- Agency-ready multi-account workspaces with member roles and invite links.
 - Production deployment docs for Vercel, Railway, Postgres, and Redis.
 
 ## Demo
@@ -157,7 +158,7 @@ The public launch roadmap is tracked in GitHub issues:
 - [#9 Public campaign templates](https://github.com/im-anishraj/instagram-comment-to-dm/issues/9) - done
 - [#10 Tracked links and analytics](https://github.com/im-anishraj/instagram-comment-to-dm/issues/10) - done
 - [#11 Shareable client reports](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11) - done
-- [#12 Agency multi-account support](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12)
+- [#12 Agency multi-account support](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12) - done
 - [#13 Founding agency offer and referrals](https://github.com/im-anishraj/instagram-comment-to-dm/issues/13)
 - [#14 SEO landing pages](https://github.com/im-anishraj/instagram-comment-to-dm/issues/14)
 

@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server";
-import { getCurrentWorkspaceId } from "@/lib/auth";
 import { getBaseUrl } from "@/lib/env";
 import { prisma } from "@/lib/db/client";
 import { getStripe } from "@/lib/stripe";
+import { canManageBilling, getCurrentWorkspaceContext } from "@/lib/workspace-access";
 
 export async function POST() {
-  const workspaceId = await getCurrentWorkspaceId();
-  if (!workspaceId) {
+  const context = await getCurrentWorkspaceContext();
+  if (!context) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
 
+  if (!canManageBilling(context.role)) {
+    return NextResponse.json(
+      { success: false, error: "Only workspace owners can manage billing" },
+      { status: 403 }
+    );
+  }
+
   const workspace = await prisma.workspace.findUnique({
-    where: { id: workspaceId },
+    where: { id: context.workspaceId },
     select: { stripeCustomerId: true },
   });
 

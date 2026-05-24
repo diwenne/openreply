@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AccountSelect, { type AccountOption } from "@/components/account-select";
 import KeywordInput from "@/components/keyword-input";
 import PostPicker from "@/components/post-picker";
 import { getCampaignTemplate } from "@/lib/templates/campaign-templates";
@@ -28,7 +29,8 @@ export default function NewCampaignPage() {
 
   const [name, setName] = useState(selectedTemplate?.title ?? "");
   const [goal, setGoal] = useState(selectedTemplate?.goal ?? "");
-  const [accountUsername, setAccountUsername] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | undefined>();
   const [keywords, setKeywords] = useState<string[]>(
@@ -53,11 +55,26 @@ export default function NewCampaignPage() {
       .then((res) => res.json())
       .then((payload) => {
         if (payload.success) {
-          setAccountUsername(payload.data.instagramAccount?.username ?? null);
+          const nextAccounts = payload.data.instagramAccounts ?? [];
+          setAccounts(nextAccounts);
+          setSelectedAccountId(
+            payload.data.selectedInstagramAccountId ??
+              nextAccounts[0]?.id ??
+              ""
+          );
         }
       })
-      .catch(() => setAccountUsername(null));
+      .catch(() => {
+        setAccounts([]);
+        setSelectedAccountId("");
+      });
   }, []);
+
+  function handleAccountChange(accountId: string) {
+    setSelectedAccountId(accountId);
+    setPostId(null);
+    setPostUrl(undefined);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +93,7 @@ export default function NewCampaignPage() {
         body: JSON.stringify({
           name,
           goal,
+          instagramAccountId: selectedAccountId,
           postId,
           postUrl: postUrl ?? null,
           keywords,
@@ -159,12 +177,22 @@ export default function NewCampaignPage() {
 
         {/* Instagram Account */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-foreground">
+          <p className="block text-sm font-medium text-foreground">
             Instagram Account <span className="text-error">*</span>
-          </label>
-          <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground">
-            {accountUsername ? `@${accountUsername}` : "Connect Instagram before launching a campaign"}
-          </div>
+          </p>
+          {accounts.length > 0 ? (
+            <AccountSelect
+              accounts={accounts}
+              value={selectedAccountId}
+              onChange={handleAccountChange}
+              includeAll={false}
+              label="Connected profile"
+            />
+          ) : (
+            <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground">
+              Connect Instagram before launching a campaign
+            </div>
+          )}
         </div>
 
         {/* Post Picker */}
@@ -178,6 +206,7 @@ export default function NewCampaignPage() {
           <div className="glass rounded-xl p-4">
             <PostPicker
               selectedPostId={postId}
+              instagramAccountId={selectedAccountId}
               onSelect={(id, url) => {
                 setPostId(id);
                 setPostUrl(url);

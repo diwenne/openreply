@@ -22,6 +22,7 @@ model User {
   sessions          Session[]
   ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
   workspaceMembers  WorkspaceMember[]
+  sentInvitations   WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
 }
 
 model Account {
@@ -81,6 +82,7 @@ model Workspace {
   dmsSentThisPeriod    Int                 @default(0)
 
   members           WorkspaceMember[]
+  invitations       WorkspaceInvitation[]
   instagramAccounts InstagramAccount[]
   automations       Automation[]
   dmLogs            DmLog[]
@@ -105,6 +107,28 @@ model WorkspaceMember {
 
   @@unique([workspaceId, userId])
   @@index([userId])
+}
+
+model WorkspaceInvitation {
+  id              String                    @id @default(cuid())
+  workspaceId     String
+  email           String
+  role            WorkspaceRole             @default(MEMBER)
+  token           String                    @unique
+  status          WorkspaceInvitationStatus @default(PENDING)
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User?     @relation("WorkspaceInvitationsSent", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, email])
+  @@index([email])
+  @@index([workspaceId])
+  @@index([status])
 }
 
 model InstagramAccount {
@@ -280,6 +304,13 @@ enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum WorkspaceInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }
 
 enum Plan {

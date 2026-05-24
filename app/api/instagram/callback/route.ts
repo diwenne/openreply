@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/env";
+import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
 import { getLongLivedToken, getUserInfo, subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
   exchangeCodeForToken,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
+import { canManageWorkspace } from "@/lib/workspace-access";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -33,9 +35,17 @@ export async function GET(request: NextRequest) {
       workspaceId: state.workspaceId,
       userId: session.user.id,
     },
+    include: {
+      workspace: {
+        select: {
+          plan: true,
+          subscriptionStatus: true,
+        },
+      },
+    },
   });
 
-  if (!membership) {
+  if (!membership || !canManageWorkspace(membership.role)) {
     return NextResponse.redirect(`${baseUrl}/settings?instagram=forbidden`);
   }
 
@@ -48,6 +58,21 @@ export async function GET(request: NextRequest) {
     const { accessToken: longLivedToken, expiresIn } =
       await getLongLivedToken(shortLivedToken);
     const userInfo = await getUserInfo(longLivedToken);
+    const connection = await canConnectInstagramAccount({
+      workspaceId: state.workspaceId,
+      plan: membership.workspace.plan,
+      subscriptionStatus: membership.workspace.subscriptionStatus,
+      instagramId: userInfo.id,
+    });
+
+    if (!connection.allowed) {
+      const reason =
+        connection.reason === "already_connected"
+          ? "already_connected"
+          : "account_limit";
+      return NextResponse.redirect(`${baseUrl}/settings?instagram=${reason}`);
+    }
+
     const encryptedToken = encryptToken(longLivedToken);
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 

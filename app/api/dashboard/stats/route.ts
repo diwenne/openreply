@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getEffectivePlan, PLAN_LIMITS } from "@/lib/billing/plans";
@@ -8,7 +8,7 @@ import {
   summarizeDmStatuses,
 } from "@/lib/tracking/analytics";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const workspaceId = await getCurrentWorkspaceId();
   if (!workspaceId) {
     return NextResponse.json(
@@ -22,10 +22,20 @@ export async function GET() {
   const weekStart = new Date(todayStart);
   weekStart.setDate(weekStart.getDate() - 7);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const requestedInstagramAccountId =
+    request.nextUrl.searchParams.get("instagramAccountId");
+  const selectedAccountId =
+    requestedInstagramAccountId && requestedInstagramAccountId !== "all"
+      ? requestedInstagramAccountId
+      : null;
+  const accountFilter = selectedAccountId
+    ? { instagramAccountId: selectedAccountId }
+    : {};
 
   const [
     workspace,
     instagramAccount,
+    instagramAccounts,
     totalAutomations,
     activeAutomations,
     dmsSentToday,
@@ -51,43 +61,78 @@ export async function GET() {
       where: { workspaceId },
       orderBy: { connectedAt: "desc" },
       select: {
+        id: true,
         username: true,
         instagramId: true,
         tokenExpiresAt: true,
         webhookSubscribed: true,
       },
     }),
-    prisma.automation.count({ where: { workspaceId } }),
-    prisma.automation.count({ where: { workspaceId, isActive: true } }),
-    prisma.dmLog.count({
-      where: { workspaceId, status: "SENT", createdAt: { gte: todayStart } },
+    prisma.instagramAccount.findMany({
+      where: { workspaceId },
+      orderBy: { connectedAt: "desc" },
+      select: {
+        id: true,
+        username: true,
+        instagramId: true,
+        name: true,
+        tokenExpiresAt: true,
+        webhookSubscribed: true,
+      },
+    }),
+    prisma.automation.count({ where: { workspaceId, ...accountFilter } }),
+    prisma.automation.count({
+      where: { workspaceId, isActive: true, ...accountFilter },
     }),
     prisma.dmLog.count({
-      where: { workspaceId, status: "SENT", createdAt: { gte: weekStart } },
+      where: {
+        workspaceId,
+        status: "SENT",
+        createdAt: { gte: todayStart },
+        ...accountFilter,
+      },
     }),
     prisma.dmLog.count({
-      where: { workspaceId, status: "SENT", createdAt: { gte: monthStart } },
+      where: {
+        workspaceId,
+        status: "SENT",
+        createdAt: { gte: weekStart },
+        ...accountFilter,
+      },
     }),
-    prisma.dmLog.count({ where: { workspaceId, status: "SENT" } }),
+    prisma.dmLog.count({
+      where: {
+        workspaceId,
+        status: "SENT",
+        createdAt: { gte: monthStart },
+        ...accountFilter,
+      },
+    }),
+    prisma.dmLog.count({
+      where: { workspaceId, status: "SENT", ...accountFilter },
+    }),
     prisma.dmLog.groupBy({
       by: ["status"],
-      where: { workspaceId, createdAt: { gte: monthStart } },
+      where: { workspaceId, createdAt: { gte: monthStart }, ...accountFilter },
       _count: { _all: true },
     }),
     prisma.linkClick.count({
-      where: { workspaceId, createdAt: { gte: monthStart } },
+      where: { workspaceId, createdAt: { gte: monthStart }, ...accountFilter },
     }),
-    prisma.linkClick.count({ where: { workspaceId } }),
+    prisma.linkClick.count({ where: { workspaceId, ...accountFilter } }),
     prisma.dmLog.groupBy({
       by: ["matchedKeyword"],
-      where: { workspaceId, matchedKeyword: { not: null } },
+      where: { workspaceId, matchedKeyword: { not: null }, ...accountFilter },
       _count: { _all: true },
     }),
     prisma.dmLog.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...accountFilter },
       orderBy: { createdAt: "desc" },
       take: 10,
-      include: { automation: { select: { name: true } } },
+      include: {
+        automation: { select: { name: true } },
+        instagramAccount: { select: { username: true } },
+      },
     }),
   ]);
 
@@ -103,6 +148,7 @@ export async function GET() {
         workspaceId,
         status: "SENT",
         createdAt: { gte: dayStart, lt: dayEnd },
+        ...accountFilter,
       },
     });
 
@@ -133,6 +179,8 @@ export async function GET() {
     data: {
       workspace,
       instagramAccount,
+      instagramAccounts,
+      selectedInstagramAccountId: selectedAccountId,
       plan: effectivePlan,
       planLimits: PLAN_LIMITS[effectivePlan],
       totalAutomations,

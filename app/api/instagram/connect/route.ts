@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { getCurrentWorkspaceId } from "@/lib/auth";
+import { canManageWorkspace, getCurrentWorkspaceContext } from "@/lib/workspace-access";
 import { getBaseUrl } from "@/lib/env";
 import { createOAuthState, getAuthorizationUrl } from "@/lib/meta/oauth";
 
 export async function GET() {
-  const workspaceId = await getCurrentWorkspaceId();
-  if (!workspaceId) {
+  const context = await getCurrentWorkspaceContext();
+  if (!context) {
     return NextResponse.redirect(`${getBaseUrl()}/login`);
+  }
+  if (!canManageWorkspace(context.role)) {
+    return NextResponse.redirect(`${getBaseUrl()}/settings?instagram=forbidden`);
   }
 
   const redirectUri = `${getBaseUrl()}/api/instagram/callback`;
-  const state = createOAuthState(workspaceId);
+  const state = createOAuthState(context.workspaceId);
 
   return NextResponse.redirect(getAuthorizationUrl(redirectUri, state));
 }

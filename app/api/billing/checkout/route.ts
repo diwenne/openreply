@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { auth, getCurrentWorkspaceId } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { getBaseUrl, requireEnv } from "@/lib/env";
 import { prisma } from "@/lib/db/client";
 import { getStripe } from "@/lib/stripe";
+import {
+  canManageBilling,
+  getCurrentWorkspaceContext,
+} from "@/lib/workspace-access";
 
 const checkoutSchema = z.object({
   plan: z.enum(["PRO", "AGENCY"]),
@@ -11,12 +15,19 @@ const checkoutSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const session = await auth();
-  const workspaceId = await getCurrentWorkspaceId();
+  const context = await getCurrentWorkspaceContext();
 
-  if (!session?.user?.email || !workspaceId) {
+  if (!session?.user?.email || !context) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
+    );
+  }
+
+  if (!canManageBilling(context.role)) {
+    return NextResponse.json(
+      { success: false, error: "Only workspace owners can manage billing" },
+      { status: 403 }
     );
   }
 
@@ -29,7 +40,7 @@ export async function POST(request: NextRequest) {
   }
 
   const workspace = await prisma.workspace.findUnique({
-    where: { id: workspaceId },
+    where: { id: context.workspaceId },
     select: { name: true, stripeCustomerId: true },
   });
 
@@ -51,11 +62,11 @@ export async function POST(request: NextRequest) {
     const customer = await stripe.customers.create({
       email: session.user.email,
       name: workspace.name,
-      metadata: { workspaceId },
+      metadata: { workspaceId: context.workspaceId },
     });
     customerId = customer.id;
     await prisma.workspace.update({
-      where: { id: workspaceId },
+      where: { id: context.workspaceId },
       data: { stripeCustomerId: customerId },
     });
   }
@@ -65,14 +76,14 @@ export async function POST(request: NextRequest) {
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
     allow_promotion_codes: true,
-    client_reference_id: workspaceId,
+    client_reference_id: context.workspaceId,
     metadata: {
-      workspaceId,
+      workspaceId: context.workspaceId,
       plan: parsed.data.plan,
     },
     subscription_data: {
       metadata: {
-        workspaceId,
+        workspaceId: context.workspaceId,
         plan: parsed.data.plan,
       },
     },

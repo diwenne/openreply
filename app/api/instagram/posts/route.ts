@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentWorkspaceId } from "@/lib/auth";
-import { prisma } from "@/lib/db/client";
+import { getWorkspaceInstagramAccount } from "@/lib/instagram-accounts";
 import { getUserMedia } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 
@@ -13,10 +13,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const account = await prisma.instagramAccount.findFirst({
-    where: { workspaceId },
-    orderBy: { connectedAt: "desc" },
-  });
+  const account = await getWorkspaceInstagramAccount(
+    workspaceId,
+    request.nextUrl.searchParams.get("instagramAccountId")
+  );
 
   if (!account) {
     return NextResponse.json(

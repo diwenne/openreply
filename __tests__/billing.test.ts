@@ -29,8 +29,13 @@ describe("billing plan helpers", () => {
     expect(PLAN_LIMITS.FREE).toEqual({
       maxAutomations: 1,
       maxDMsPerMonth: 100,
+      maxInstagramAccounts: 1,
+      maxWorkspaceMembers: 1,
     });
     expect(PLAN_LIMITS.PRO.maxAutomations).toBe(10);
+    expect(PLAN_LIMITS.PRO.maxInstagramAccounts).toBe(1);
+    expect(PLAN_LIMITS.AGENCY.maxInstagramAccounts).toBe(10);
+    expect(PLAN_LIMITS.AGENCY.maxWorkspaceMembers).toBe(10);
     expect(PLAN_LIMITS.AGENCY.maxDMsPerMonth).toBe(10000);
   });
 });

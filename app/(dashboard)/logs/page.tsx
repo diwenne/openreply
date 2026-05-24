@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
+import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatusBadge from "@/components/status-badge";
 
 interface DmLog {
@@ -18,6 +19,7 @@ interface DmLog {
   errorMessage: string | null;
   createdAt: string;
   automation: { name: string; keywords: string[] };
+  instagramAccount: { username: string };
 }
 
 interface Pagination {
@@ -42,12 +44,17 @@ export default function LogsPage() {
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [page, setPage] = useState(1);
 
   const fetchLogs = useCallback(async () => {
     try {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
       if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (selectedAccountId !== "all") {
+        params.set("instagramAccountId", selectedAccountId);
+      }
 
       const res = await fetch(`/api/logs?${params}`);
       const data = await res.json();
@@ -60,7 +67,16 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter]);
+  }, [page, statusFilter, selectedAccountId]);
+
+  useEffect(() => {
+    fetch("/api/dashboard/stats")
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.success) setAccounts(payload.data.instagramAccounts ?? []);
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -75,26 +91,41 @@ export default function LogsPage() {
     setPage(1);
   }
 
+  function handleAccountChange(accountId: string) {
+    setLoading(true);
+    setSelectedAccountId(accountId);
+    setPage(1);
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        {STATUS_FILTERS.map((status) => (
-          <button
-            key={status}
-            onClick={() => handleFilterChange(status)}
-            className={`
-              px-3 py-1.5 rounded-lg text-xs font-medium transition-all
-              ${
-                statusFilter === status
-                  ? "bg-accent/15 text-accent border border-accent/20"
-                  : "bg-surface text-muted border border-border hover:border-border-hover hover:text-foreground"
-              }
-            `}
-          >
-            {status === "ALL" ? "All" : status.replace("SKIPPED_", "").replace("_", " ")}
-          </button>
-        ))}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((status) => (
+            <button
+              key={status}
+              onClick={() => handleFilterChange(status)}
+              className={`
+                px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                ${
+                  statusFilter === status
+                    ? "bg-accent/15 text-accent border border-accent/20"
+                    : "bg-surface text-muted border border-border hover:border-border-hover hover:text-foreground"
+                }
+              `}
+            >
+              {status === "ALL" ? "All" : status.replace("SKIPPED_", "").replace("_", " ")}
+            </button>
+          ))}
+        </div>
+        {accounts.length > 1 && (
+          <AccountSelect
+            accounts={accounts}
+            value={selectedAccountId}
+            onChange={handleAccountChange}
+          />
+        )}
       </div>
 
       {/* Table */}
@@ -106,6 +137,7 @@ export default function LogsPage() {
                 <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Commenter</th>
                 <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Comment</th>
                 <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Campaign</th>
+                <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Account</th>
                 <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-muted uppercase tracking-wider">Time</th>
               </tr>
@@ -115,7 +147,7 @@ export default function LogsPage() {
                 <>
                   {[...Array(5)].map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={5} className="px-6 py-4">
+                      <td colSpan={6} className="px-6 py-4">
                         <div className="h-4 bg-zinc-800 rounded animate-pulse" />
                       </td>
                     </tr>
@@ -124,7 +156,7 @@ export default function LogsPage() {
               )}
               {!loading && logs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted">
                     No logs found
                   </td>
                 </tr>
@@ -142,6 +174,9 @@ export default function LogsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-muted">{log.automation.name}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-muted">@{log.instagramAccount.username}</span>
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={log.status} />

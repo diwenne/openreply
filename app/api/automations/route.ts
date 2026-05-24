@@ -7,10 +7,15 @@ import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
 import { buildTrackedUrl } from "@/lib/tracking/message";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
 import { buildReportUrl, generateReportShareSlug } from "@/lib/reports/share";
+import {
+  canManageWorkspace,
+  getCurrentWorkspaceContext,
+} from "@/lib/workspace-access";
 
 const createAutomationSchema = z.object({
   name: z.string().min(1).max(100),
   goal: z.string().min(1).max(120).optional().nullable(),
+  instagramAccountId: z.string().min(1).optional().nullable(),
   postId: z.string().min(1),
   postUrl: z.string().url().optional().nullable(),
   keywords: z.array(z.string().min(1).max(50)).min(1).max(10),
@@ -30,7 +35,7 @@ const updateAutomationSchema = z.object({
   reportShareEnabled: z.boolean().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const workspaceId = await getCurrentWorkspaceId();
   if (!workspaceId) {
     return NextResponse.json(
@@ -38,9 +43,15 @@ export async function GET() {
       { status: 401 }
     );
   }
+  const instagramAccountId =
+    request.nextUrl.searchParams.get("instagramAccountId");
+  const accountFilter =
+    instagramAccountId && instagramAccountId !== "all"
+      ? { instagramAccountId }
+      : {};
 
   const automations = await prisma.automation.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...accountFilter },
     include: {
       instagramAccount: {
         select: { username: true, instagramId: true },
@@ -176,13 +187,22 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const workspaceId = await getCurrentWorkspaceId();
-  if (!workspaceId) {
+  const context = await getCurrentWorkspaceContext();
+  if (!context) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  if (!canManageWorkspace(context.role)) {
+    return NextResponse.json(
+      { success: false, error: "Only owners and admins can create campaigns" },
+      { status: 403 }
+    );
+  }
+
+  const workspaceId = context.workspaceId;
 
   const body = await request.json();
   const parsed = createAutomationSchema.safeParse(body);
@@ -198,15 +218,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const requestedInstagramAccountId =
+    parsed.data.instagramAccountId && parsed.data.instagramAccountId !== "all"
+      ? parsed.data.instagramAccountId
+      : null;
+
   const [workspace, instagramAccount, automationCount] = await Promise.all([
     prisma.workspace.findUnique({
       where: { id: workspaceId },
       select: { plan: true, subscriptionStatus: true },
     }),
-    prisma.instagramAccount.findFirst({
-      where: { workspaceId },
-      orderBy: { connectedAt: "desc" },
-    }),
+    requestedInstagramAccountId
+      ? prisma.instagramAccount.findFirst({
+          where: { id: requestedInstagramAccountId, workspaceId },
+        })
+      : prisma.instagramAccount.findFirst({
+          where: { workspaceId },
+          orderBy: { connectedAt: "desc" },
+        }),
     prisma.automation.count({ where: { workspaceId } }),
   ]);
 
@@ -240,11 +269,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { trackedDestinationUrl, ...automationData } = parsed.data;
+  const { trackedDestinationUrl } = parsed.data;
 
   const automation = await prisma.automation.create({
     data: {
-      ...automationData,
+      name: parsed.data.name,
+      goal: parsed.data.goal,
+      postId: parsed.data.postId,
+      postUrl: parsed.data.postUrl,
+      keywords: parsed.data.keywords,
+      dmMessage: parsed.data.dmMessage,
+      isActive: parsed.data.isActive,
+      wholeWordMatch: parsed.data.wholeWordMatch,
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),
@@ -273,13 +309,22 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const workspaceId = await getCurrentWorkspaceId();
-  if (!workspaceId) {
+  const context = await getCurrentWorkspaceContext();
+  if (!context) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  if (!canManageWorkspace(context.role)) {
+    return NextResponse.json(
+      { success: false, error: "Only owners and admins can update campaigns" },
+      { status: 403 }
+    );
+  }
+
+  const workspaceId = context.workspaceId;
 
   const automationId = request.nextUrl.searchParams.get("id");
   if (!automationId) {
@@ -323,13 +368,22 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const workspaceId = await getCurrentWorkspaceId();
-  if (!workspaceId) {
+  const context = await getCurrentWorkspaceContext();
+  if (!context) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  if (!canManageWorkspace(context.role)) {
+    return NextResponse.json(
+      { success: false, error: "Only owners and admins can delete campaigns" },
+      { status: 403 }
+    );
+  }
+
+  const workspaceId = context.workspaceId;
 
   const automationId = request.nextUrl.searchParams.get("id");
   if (!automationId) {

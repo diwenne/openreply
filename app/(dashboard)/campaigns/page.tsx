@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import AccountSelect, { type AccountOption } from "@/components/account-select";
 
 interface Campaign {
   id: string;
@@ -19,6 +20,10 @@ interface Campaign {
   dmMessage: string;
   isActive: boolean;
   wholeWordMatch: boolean;
+  instagramAccount: {
+    username: string;
+    instagramId: string;
+  };
   reportShareSlug: string | null;
   reportShareEnabled: boolean;
   reportUrl: string | null;
@@ -43,11 +48,17 @@ interface Campaign {
 
 export default function CampaignsPage() {
   const [automations, setAutomations] = useState<Campaign[]>([]);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [loading, setLoading] = useState(true);
 
   const fetchAutomations = useCallback(async () => {
     try {
-      const res = await fetch("/api/automations");
+      const params = new URLSearchParams();
+      if (selectedAccountId !== "all") {
+        params.set("instagramAccountId", selectedAccountId);
+      }
+      const res = await fetch(`/api/automations${params.size ? `?${params}` : ""}`);
       const data = await res.json();
       if (data.success) setAutomations(data.data);
     } catch (err) {
@@ -55,6 +66,15 @@ export default function CampaignsPage() {
     } finally {
       setLoading(false);
     }
+  }, [selectedAccountId]);
+
+  useEffect(() => {
+    fetch("/api/dashboard/stats")
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.success) setAccounts(payload.data.instagramAccounts ?? []);
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -63,6 +83,11 @@ export default function CampaignsPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchAutomations]);
+
+  function handleAccountChange(accountId: string) {
+    setLoading(true);
+    setSelectedAccountId(accountId);
+  }
 
   async function toggleActive(id: string, isActive: boolean) {
     try {
@@ -121,21 +146,30 @@ export default function CampaignsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-muted">
             {automations.length} campaign{automations.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Link
-          href="/campaigns/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          New Campaign
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          {accounts.length > 1 && (
+            <AccountSelect
+              accounts={accounts}
+              value={selectedAccountId}
+              onChange={handleAccountChange}
+            />
+          )}
+          <Link
+            href="/campaigns/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Campaign
+          </Link>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -167,6 +201,9 @@ export default function CampaignsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3">
                   <h3 className="text-base font-semibold truncate">{auto.name}</h3>
+                  <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+                    @{auto.instagramAccount.username}
+                  </span>
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       auto.isActive

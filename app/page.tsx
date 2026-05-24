@@ -79,6 +79,7 @@ const campaignCards = [
 const platformFeatures = [
   "Email magic-link signup",
   "Workspace-based tenancy",
+  "Agency multi-account support",
   "Stripe-backed plan limits",
   "Encrypted Instagram tokens",
   "Webhook event storage",
@@ -118,9 +119,10 @@ const pricingTiers = [
     description: "For operators managing bigger campaign pipelines.",
     features: [
       "Unlimited campaigns",
+      "10 Instagram accounts",
       "10,000 DMs per month",
       "Queue-backed worker",
-      "Workspace-ready foundation",
+      "Member roles and reports",
     ],
     cta: "Start Agency",
     featured: false,

@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatCard from "@/components/stat-card";
 import StatusBadge from "@/components/status-badge";
 
@@ -22,6 +23,8 @@ interface DashboardStats {
   clicksThisMonth: number;
   totalClicks: number;
   ctrThisMonth: number;
+  instagramAccounts: AccountOption[];
+  selectedInstagramAccountId: string | null;
   topKeywords: { keyword: string; count: number }[];
   dailyDMs: { date: string; count: number }[];
   recentLogs: Array<{
@@ -31,22 +34,34 @@ interface DashboardStats {
     status: string;
     createdAt: string;
     automation: { name: string };
+    instagramAccount?: { username: string };
   }>;
 }
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedAccountId, setSelectedAccountId] = useState("all");
 
   useEffect(() => {
-    fetch("/api/dashboard/stats")
+    const params = new URLSearchParams();
+    if (selectedAccountId !== "all") {
+      params.set("instagramAccountId", selectedAccountId);
+    }
+
+    fetch(`/api/dashboard/stats${params.size ? `?${params}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success) setStats(data.data);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedAccountId]);
+
+  function handleAccountChange(accountId: string) {
+    setLoading(true);
+    setSelectedAccountId(accountId);
+  }
 
   if (loading) {
     return (
@@ -68,6 +83,16 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {stats && stats.instagramAccounts.length > 1 && (
+        <div className="flex justify-end">
+          <AccountSelect
+            accounts={stats.instagramAccounts}
+            value={selectedAccountId}
+            onChange={handleAccountChange}
+          />
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 stagger">
         <StatCard
@@ -179,7 +204,12 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-foreground truncate">
                     @{log.commenterName ?? "unknown"}
                   </p>
-                  <p className="text-xs text-muted truncate">{log.commentText}</p>
+                  <p className="text-xs text-muted truncate">
+                    {log.instagramAccount
+                      ? `@${log.instagramAccount.username} · `
+                      : ""}
+                    {log.commentText}
+                  </p>
                 </div>
                 <StatusBadge status={log.status} />
               </div>

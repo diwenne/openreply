@@ -3,12 +3,29 @@ import type { Plan, SubscriptionStatus } from "@/app/generated/prisma/client";
 export interface PlanLimit {
   maxAutomations: number;
   maxDMsPerMonth: number;
+  maxInstagramAccounts: number;
+  maxWorkspaceMembers: number;
 }
 
 export const PLAN_LIMITS: Record<Plan, PlanLimit> = {
-  FREE: { maxAutomations: 1, maxDMsPerMonth: 100 },
-  PRO: { maxAutomations: 10, maxDMsPerMonth: 2000 },
-  AGENCY: { maxAutomations: Number.POSITIVE_INFINITY, maxDMsPerMonth: 10000 },
+  FREE: {
+    maxAutomations: 1,
+    maxDMsPerMonth: 100,
+    maxInstagramAccounts: 1,
+    maxWorkspaceMembers: 1,
+  },
+  PRO: {
+    maxAutomations: 10,
+    maxDMsPerMonth: 2000,
+    maxInstagramAccounts: 1,
+    maxWorkspaceMembers: 1,
+  },
+  AGENCY: {
+    maxAutomations: Number.POSITIVE_INFINITY,
+    maxDMsPerMonth: 10000,
+    maxInstagramAccounts: 10,
+    maxWorkspaceMembers: 10,
+  },
 };
 
 export function getPlanForPriceId(priceId: string | null | undefined): Plan {

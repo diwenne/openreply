@@ -23,27 +23,54 @@ interface InstagramPost {
 
 interface PostPickerProps {
   selectedPostId: string | null;
+  instagramAccountId?: string | null;
   onSelect: (postId: string, postUrl?: string) => void;
 }
 
-export default function PostPicker({ selectedPostId, onSelect }: PostPickerProps) {
+export default function PostPicker({
+  selectedPostId,
+  instagramAccountId,
+  onSelect,
+}: PostPickerProps) {
   const [posts, setPosts] = useState<InstagramPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/instagram/posts")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success) {
-          setPosts(data.data);
-        } else {
-          setError(data.error ?? "Failed to load posts");
-        }
-      })
-      .catch(() => setError("Failed to load posts"))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (instagramAccountId) {
+      params.set("instagramAccountId", instagramAccountId);
+    }
+
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      setPosts([]);
+
+      fetch(`/api/instagram/posts${params.size ? `?${params}` : ""}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled) return;
+          if (data.success) {
+            setPosts(data.data);
+          } else {
+            setError(data.error ?? "Failed to load posts");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setError("Failed to load posts");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [instagramAccountId]);
 
   if (loading) {
     return (
