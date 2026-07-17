@@ -71,10 +71,23 @@ export interface InstagramMedia {
   id: string;
   caption?: string;
   media_type: string;
+  media_product_type?: string;
   media_url?: string;
   thumbnail_url?: string;
   timestamp: string;
   permalink?: string;
+  like_count?: number;
+  comments_count?: number;
+}
+
+export interface InstagramMediaInsights {
+  views?: number;
+  reach?: number;
+  likes?: number;
+  comments?: number;
+  saved?: number;
+  shares?: number;
+  total_interactions?: number;
 }
 
 interface TokenResponse {
@@ -185,7 +198,7 @@ export async function getUserMedia(
   const url = new URL(`${instagramGraphBase()}/me/media`);
   url.searchParams.set(
     "fields",
-    "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink"
+    "id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count"
   );
   url.searchParams.set("limit", limit.toString());
   url.searchParams.set("access_token", accessToken);
@@ -193,6 +206,36 @@ export async function getUserMedia(
   const response = await fetch(url.toString());
   const data = await handleResponse<{ data: InstagramMedia[] }>(response);
   return data.data;
+}
+
+/**
+ * Fetch per-media insight metrics (views, reach, saved, shares, etc.).
+ *
+ * Requires the `instagram_business_manage_insights` permission — accounts
+ * connected before that scope was requested will throw a PermissionError.
+ * Metric validity varies by media type, so pass only metrics that apply to
+ * the given media (e.g. `views` is not valid for image posts on some accounts).
+ */
+export async function getMediaInsights(
+  accessToken: string,
+  mediaId: string,
+  metrics: string[]
+): Promise<InstagramMediaInsights> {
+  const url = new URL(`${instagramGraphBase()}/${mediaId}/insights`);
+  url.searchParams.set("metric", metrics.join(","));
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url.toString());
+  const data = await handleResponse<{
+    data: Array<{ name: string; values: Array<{ value: number }> }>;
+  }>(response);
+
+  const result: InstagramMediaInsights = {};
+  for (const entry of data.data) {
+    result[entry.name as keyof InstagramMediaInsights] =
+      entry.values?.[0]?.value ?? 0;
+  }
+  return result;
 }
 
 export async function getLongLivedToken(

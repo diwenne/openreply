@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     await prisma.operationalEvent
       .create({
         data: {
-          source: "WEBHOOK",
+          source: "SYSTEM",
           level: "WARNING",
           message: "Webhook signature verification failed",
           payload: {
