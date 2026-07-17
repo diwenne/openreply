@@ -171,6 +171,7 @@ export default function NewCampaignPage() {
             <option value="Product link request">Product link request</option>
             <option value="Price or availability reply">Price or availability reply</option>
             <option value="Launch waitlist">Launch waitlist</option>
+            <option value="Follower growth">Follower growth</option>
             <option value="Agency client campaign">Agency client campaign</option>
           </select>
         </div>
