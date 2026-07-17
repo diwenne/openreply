@@ -53,6 +53,9 @@ interface GraphApiError {
 
 export interface InstagramUser {
   id: string;
+  // Instagram professional account ID. This — not `id` (the app-scoped ID) —
+  // is what appears as entry.id in webhooks and is used by the messaging API.
+  user_id?: string;
   username: string;
   name?: string;
 }
@@ -184,7 +187,7 @@ export async function getMediaComments(
 
 export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
   const url = new URL(`${instagramGraphBase()}/me`);
-  url.searchParams.set("fields", "id,username,name");
+  url.searchParams.set("fields", "id,user_id,username,name");
   url.searchParams.set("access_token", accessToken);
 
   const response = await fetch(url.toString());

@@ -50,9 +50,14 @@ export async function GET(request: NextRequest) {
     const { accessToken: longLivedToken, expiresIn } =
       await getLongLivedToken(shortLivedToken);
     const userInfo = await getUserInfo(longLivedToken);
+    // Webhooks and the messaging API key off the professional account ID
+    // (user_id), not the app-scoped `id`. Store user_id so comment webhooks
+    // can be matched back to this account. Fall back to id if user_id is
+    // ever absent.
+    const instagramId = userInfo.user_id ?? userInfo.id;
     const connection = await canConnectInstagramAccount({
       workspaceId: state.workspaceId,
-      instagramId: userInfo.id,
+      instagramId,
     });
 
     if (!connection.allowed) {
@@ -67,7 +72,7 @@ export async function GET(request: NextRequest) {
     let webhookSubscribed = false;
     try {
       const subscription = await subscribeInstagramAccountToWebhooks(
-        userInfo.id,
+        instagramId,
         longLivedToken
       );
       webhookSubscribed = Boolean(subscription.success);
@@ -79,10 +84,10 @@ export async function GET(request: NextRequest) {
     }
 
     await prisma.instagramAccount.upsert({
-      where: { instagramId: userInfo.id },
+      where: { instagramId },
       create: {
         workspaceId: state.workspaceId,
-        instagramId: userInfo.id,
+        instagramId,
         username: userInfo.username,
         name: userInfo.name,
         accessToken: encryptedToken,
