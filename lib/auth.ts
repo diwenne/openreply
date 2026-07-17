@@ -31,7 +31,7 @@ export const authConfig = {
   },
   pages: {
     signIn: "/login",
-    verifyRequest: "/login?checkEmail=1",
+    verifyRequest: "/verify-request",
   },
   session: {
     strategy: "database",
