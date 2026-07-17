@@ -1,13 +1,22 @@
 /**
  * Rate Limiter
  *
- * Redis-based sliding window rate limiter for Instagram DM sending.
- * Enforces a cap of 190 DMs per hour per Instagram account.
+ * Redis-based rate limiter for Instagram private replies.
+ *
+ * The cap matches Meta's documented limit for this exact call: 750 private
+ * replies per hour per Instagram professional account, for comments on posts
+ * and reels. Exceeding it risks 429s and app-level restrictions, so the worker
+ * requeues rather than pushing through.
+ * https://developers.facebook.com/docs/graph-api/overview/rate-limiting/
+ *
+ * Note this is a hard ceiling with no headroom. If Meta throttles before the
+ * documented limit, or other calls on the same account share the bucket, lower
+ * this value.
  */
 
 import Redis from "ioredis";
 
-const RATE_LIMIT_MAX = 190; // DMs per hour
+const RATE_LIMIT_MAX = 750; // private replies per hour, per Meta's documented cap
 const RATE_LIMIT_WINDOW = 3600; // 1 hour in seconds
 const REQUEUE_DELAY_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_REQUEUE_ATTEMPTS = 3;

@@ -1,7 +1,8 @@
 /**
  * Rate Limiter — Unit Tests
  *
- * Tests the 190 DMs/hour cap enforcement using mocked Redis.
+ * Tests the hourly private-reply cap enforcement using mocked Redis.
+ * Assertions derive from RATE_LIMIT_MAX so they survive a change to the cap.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -62,7 +63,7 @@ describe("checkRateLimit", () => {
   });
 
   it("should deny when count reaches the limit", async () => {
-    mockGet.mockResolvedValue("190");
+    mockGet.mockResolvedValue(String(RATE_LIMIT_MAX));
 
     const result = await checkRateLimit("account_123");
 
@@ -72,7 +73,7 @@ describe("checkRateLimit", () => {
   });
 
   it("should skip after max requeue attempts", async () => {
-    mockGet.mockResolvedValue("190");
+    mockGet.mockResolvedValue(String(RATE_LIMIT_MAX));
 
     const result = await checkRateLimit("account_123", 3);
 
@@ -102,7 +103,7 @@ describe("reserveDMSlot", () => {
   });
 
   it("should recommend requeue when the atomic reserve is denied", async () => {
-    mockEval.mockResolvedValue([0, 190, 0]);
+    mockEval.mockResolvedValue([0, RATE_LIMIT_MAX, 0]);
 
     const result = await reserveDMSlot("account_123", 0);
 
@@ -113,7 +114,7 @@ describe("reserveDMSlot", () => {
   });
 
   it("should skip after max requeue attempts", async () => {
-    mockEval.mockResolvedValue(["0", "190", "0"]);
+    mockEval.mockResolvedValue(["0", String(RATE_LIMIT_MAX), "0"]);
 
     const result = await reserveDMSlot("account_123", 3);
 

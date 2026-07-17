@@ -30,7 +30,7 @@ Most tools in this market are broad chatbot platforms. This one is intentionally
 - Meta webhook verification and event storage.
 - BullMQ worker for private reply delivery.
 - Idempotent DM logs per campaign/comment.
-- Redis-backed hourly DM rate limiting (protects against Meta throttling).
+- Redis-backed hourly DM rate limiting, set to Meta's documented cap of 750 private replies/hour per account.
 - Monthly DM usage counting for the dashboard, with no cap enforced.
 - Vercel cron for token refresh and usage maintenance.
 - Health checks and authenticated production diagnostics.
