@@ -17,6 +17,21 @@ import {
   replaceUrlWithTrackedPlaceholder,
 } from "@/lib/tracking/message";
 
+const DRAFT_KEY = "new-campaign-draft";
+
+interface CampaignDraft {
+  name: string;
+  goal: string;
+  selectedAccountId: string;
+  postId: string | null;
+  postUrl?: string;
+  keywords: string[];
+  dmMessage: string;
+  trackedDestinationUrl: string;
+  wholeWordMatch: boolean;
+  isActive: boolean;
+}
+
 export default function NewCampaignPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,6 +64,29 @@ export default function NewCampaignPage() {
   );
   const [wholeWordMatch, setWholeWordMatch] = useState(true);
   const [isActive, setIsActive] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+
+  // Live per-field validity. Red highlighting only appears after a submit
+  // attempt, and clears automatically as each field is filled.
+  const missing = {
+    name: !name.trim(),
+    goal: !goal,
+    account: accounts.length === 0 || !selectedAccountId,
+    post: !postId,
+    keywords: keywords.length === 0,
+    dmMessage: !dmMessage.trim(),
+  };
+  const fieldLabels: Record<keyof typeof missing, string> = {
+    name: "a campaign name",
+    goal: "a campaign goal",
+    account: "a connected Instagram account",
+    post: "a post or reel to trigger the campaign",
+    keywords: "at least one comment keyword",
+    dmMessage: "a private reply message",
+  };
+  const borderClass = (bad: boolean) =>
+    attempted && bad ? "border-error" : "border-border";
 
   useEffect(() => {
     fetch("/api/dashboard/stats")
@@ -57,18 +95,79 @@ export default function NewCampaignPage() {
         if (payload.success) {
           const nextAccounts = payload.data.instagramAccounts ?? [];
           setAccounts(nextAccounts);
+          // Keep a draft-restored account if one is already selected.
           setSelectedAccountId(
-            payload.data.selectedInstagramAccountId ??
-              nextAccounts[0]?.id ??
+            (prev) =>
+              prev ||
+              payload.data.selectedInstagramAccountId ||
+              nextAccounts[0]?.id ||
               ""
           );
         }
       })
       .catch(() => {
         setAccounts([]);
-        setSelectedAccountId("");
       });
   }, []);
+
+  // Restore an in-progress draft after mount (client only, avoids hydration mismatch).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<CampaignDraft>;
+        if (draft.name) setName(draft.name);
+        if (draft.goal) setGoal(draft.goal);
+        if (draft.selectedAccountId) setSelectedAccountId(draft.selectedAccountId);
+        if (draft.postId) setPostId(draft.postId);
+        if (draft.postUrl) setPostUrl(draft.postUrl);
+        if (draft.keywords?.length) setKeywords(draft.keywords);
+        if (draft.dmMessage) setDmMessage(draft.dmMessage);
+        if (draft.trackedDestinationUrl)
+          setTrackedDestinationUrl(draft.trackedDestinationUrl);
+        if (typeof draft.wholeWordMatch === "boolean")
+          setWholeWordMatch(draft.wholeWordMatch);
+        if (typeof draft.isActive === "boolean") setIsActive(draft.isActive);
+      }
+    } catch {
+      // ignore malformed draft
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist the draft so a refresh doesn't lose in-progress work.
+  useEffect(() => {
+    if (!hydrated) return;
+    const draft: CampaignDraft = {
+      name,
+      goal,
+      selectedAccountId,
+      postId,
+      postUrl,
+      keywords,
+      dmMessage,
+      trackedDestinationUrl,
+      wholeWordMatch,
+      isActive,
+    };
+    try {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // storage unavailable — ignore
+    }
+  }, [
+    hydrated,
+    name,
+    goal,
+    selectedAccountId,
+    postId,
+    postUrl,
+    keywords,
+    dmMessage,
+    trackedDestinationUrl,
+    wholeWordMatch,
+    isActive,
+  ]);
 
   function handleAccountChange(accountId: string) {
     setSelectedAccountId(accountId);
@@ -78,8 +177,21 @@ export default function NewCampaignPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name || !goal || !postId || keywords.length === 0 || !dmMessage) {
-      setError("Please fill in all required fields");
+    setAttempted(true);
+
+    const order: (keyof typeof missing)[] = [
+      "name",
+      "goal",
+      "account",
+      "post",
+      "keywords",
+      "dmMessage",
+    ];
+    const firstMissing = order.find((key) => missing[key]);
+    if (firstMissing) {
+      setError(`Please add ${fieldLabels[firstMissing]}.`);
+      const el = document.getElementById(`field-${firstMissing}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -106,6 +218,11 @@ export default function NewCampaignPage() {
 
       const data = await res.json();
       if (data.success) {
+        try {
+          window.localStorage.removeItem(DRAFT_KEY);
+        } catch {
+          // ignore
+        }
         router.push("/campaigns");
       } else {
         setError(data.error ?? "Failed to create campaign");
@@ -142,7 +259,7 @@ export default function NewCampaignPage() {
         )}
 
         {/* Name */}
-        <div className="space-y-2">
+        <div id="field-name" className="space-y-2 scroll-mt-24">
           <label className="block text-sm font-medium text-foreground">
             Campaign Name <span className="text-error">*</span>
           </label>
@@ -151,20 +268,20 @@ export default function NewCampaignPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Product launch link drop"
-            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+            className={`w-full px-4 py-3 rounded bg-surface border ${borderClass(missing.name)} text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors`}
             maxLength={100}
           />
         </div>
 
         {/* Goal */}
-        <div className="space-y-2">
+        <div id="field-goal" className="space-y-2 scroll-mt-24">
           <label className="block text-sm font-medium text-foreground">
             Campaign Goal <span className="text-error">*</span>
           </label>
           <select
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
-            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground focus:border-accent/40 focus:outline-none transition-colors"
+            className={`w-full px-4 py-3 rounded bg-surface border ${borderClass(missing.goal)} text-sm text-foreground focus:border-accent/40 focus:outline-none transition-colors`}
           >
             <option value="">Select a goal</option>
             <option value="Lead magnet delivery">Lead magnet delivery</option>
@@ -177,7 +294,7 @@ export default function NewCampaignPage() {
         </div>
 
         {/* Instagram Account */}
-        <div className="space-y-2">
+        <div id="field-account" className="space-y-2 scroll-mt-24">
           <p className="block text-sm font-medium text-foreground">
             Instagram Account <span className="text-error">*</span>
           </p>
@@ -190,21 +307,23 @@ export default function NewCampaignPage() {
               label="Connected profile"
             />
           ) : (
-            <div className="rounded border border-border bg-surface px-4 py-3 text-sm text-foreground">
+            <div
+              className={`rounded border ${borderClass(missing.account)} bg-surface px-4 py-3 text-sm text-foreground`}
+            >
               Connect Instagram before launching a campaign
             </div>
           )}
         </div>
 
         {/* Post Picker */}
-        <div className="space-y-2">
+        <div id="field-post" className="space-y-2 scroll-mt-24">
           <label className="block text-sm font-medium text-foreground">
             Campaign Post Or Reel <span className="text-error">*</span>
           </label>
           <p className="text-xs text-muted mb-3">
             Choose which Instagram post or reel should trigger the campaign.
           </p>
-          <div className="panel rounded p-4">
+          <div className={`panel rounded p-4 border ${borderClass(missing.post)}`}>
             <PostPicker
               selectedPostId={postId}
               instagramAccountId={selectedAccountId}
@@ -217,18 +336,20 @@ export default function NewCampaignPage() {
         </div>
 
         {/* Keywords */}
-        <div className="space-y-2">
+        <div id="field-keywords" className="space-y-2 scroll-mt-24">
           <label className="block text-sm font-medium text-foreground">
             Comment Keywords <span className="text-error">*</span>
           </label>
           <p className="text-xs text-muted mb-1">
             When someone comments any of these keywords, the campaign sends the private reply.
           </p>
-          <KeywordInput keywords={keywords} onChange={setKeywords} />
+          <div className={attempted && missing.keywords ? "rounded border border-error" : ""}>
+            <KeywordInput keywords={keywords} onChange={setKeywords} />
+          </div>
         </div>
 
         {/* DM Message */}
-        <div className="space-y-2">
+        <div id="field-dmMessage" className="space-y-2 scroll-mt-24">
           <label className="block text-sm font-medium text-foreground">
             Private Reply Message <span className="text-error">*</span>
           </label>
@@ -237,7 +358,7 @@ export default function NewCampaignPage() {
             onChange={(e) => setDmMessage(e.target.value)}
             placeholder="Hey {username}! Here's the link you asked for: https://..."
             rows={4}
-            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors resize-none"
+            className={`w-full px-4 py-3 rounded bg-surface border ${borderClass(missing.dmMessage)} text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors resize-none`}
             maxLength={1000}
           />
           <p className="text-xs text-muted">

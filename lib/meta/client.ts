@@ -136,6 +136,26 @@ export async function sendPrivateReply(
   return handleResponse(response);
 }
 
+export async function sendCommentReply(
+  accessToken: string,
+  commentId: string,
+  message: string
+): Promise<{ id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${commentId}/replies`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ message }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
 export async function getMediaComments(
   accessToken: string,
   mediaId: string
