@@ -34,9 +34,9 @@ describe("tracked link messages", () => {
             destinationUrl: "https://example.com/guide",
           },
         ],
-        baseUrl: "https://campaigncue.com",
+        baseUrl: "https://manychat-alternative.com",
       })
-    ).toBe("Hey Maya, grab it here: https://campaigncue.com/r/abc123");
+    ).toBe("Hey Maya, grab it here: https://manychat-alternative.com/r/abc123");
   });
 
   it("can replace a raw destination URL when the placeholder is missing", () => {
@@ -49,9 +49,9 @@ describe("tracked link messages", () => {
             destinationUrl: "https://example.com/guide",
           },
         ],
-        baseUrl: "https://campaigncue.com/",
+        baseUrl: "https://manychat-alternative.com/",
       })
-    ).toBe("Link: https://campaigncue.com/r/abc123");
+    ).toBe("Link: https://manychat-alternative.com/r/abc123");
   });
 
   it("matches normalized root URLs with or without trailing slash", () => {
@@ -67,14 +67,14 @@ describe("tracked link messages", () => {
             destinationUrl: "https://example.com/",
           },
         ],
-        baseUrl: "https://campaigncue.com",
+        baseUrl: "https://manychat-alternative.com",
       })
-    ).toBe("Link: https://campaigncue.com/r/abc123");
+    ).toBe("Link: https://manychat-alternative.com/r/abc123");
   });
 
   it("builds redirect URLs from a base URL", () => {
-    expect(buildTrackedUrl("abc123", "https://campaigncue.com/")).toBe(
-      "https://campaigncue.com/r/abc123"
+    expect(buildTrackedUrl("abc123", "https://manychat-alternative.com/")).toBe(
+      "https://manychat-alternative.com/r/abc123"
     );
   });
 });

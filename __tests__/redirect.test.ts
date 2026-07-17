@@ -35,7 +35,7 @@ describe("tracked link redirect route", () => {
     mockPrisma.linkClick.create.mockResolvedValue({});
 
     const response = await GET(
-      new Request("https://campaigncue.com/r/abc123", {
+      new Request("https://manychat-alternative.com/r/abc123", {
         headers: {
           "user-agent": "vitest",
           referer: "https://instagram.com/",
@@ -67,14 +67,14 @@ describe("tracked link redirect route", () => {
     mockPrisma.trackedLink.findUnique.mockResolvedValue(null);
 
     const response = await GET(
-      new Request("https://campaigncue.com/r/missing") as Parameters<
+      new Request("https://manychat-alternative.com/r/missing") as Parameters<
         typeof GET
       >[0],
       { params: Promise.resolve({ slug: "missing" }) }
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("https://campaigncue.com/");
+    expect(response.headers.get("location")).toBe("https://manychat-alternative.com/");
     expect(mockPrisma.linkClick.create).not.toHaveBeenCalled();
   });
 });

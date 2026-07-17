@@ -25,7 +25,7 @@ export async function generateMetadata({
 
   if (!template) {
     return {
-      title: "Template Not Found - CampaignCue",
+      title: "Template Not Found - ManyChat Alternative",
     };
   }
 
@@ -169,7 +169,7 @@ export default async function TemplateDetailPage({ params }: TemplatePageProps) 
             <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <h2 className="text-2xl font-black text-white">
-                  Copy this campaign into CampaignCue
+                  Copy this campaign into ManyChat Alternative
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-zinc-300">
                   Sign in, connect Instagram, pick a post or reel, and the

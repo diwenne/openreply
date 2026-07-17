@@ -42,21 +42,20 @@ export default function KeywordInput({ keywords, onChange, max = 10 }: KeywordIn
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-surface border border-border focus-within:border-accent/40 transition-colors min-h-[48px]">
+      <div className="flex flex-wrap gap-2 p-3 rounded bg-surface border border-border min-h-[48px]">
         {keywords.map((keyword) => (
           <span
             key={keyword}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-medium border border-accent/15"
+            className="inline-flex items-center gap-2 px-2 py-1 rounded border border-border text-xs"
           >
             {keyword}
             <button
               type="button"
               onClick={() => removeKeyword(keyword)}
-              className="hover:text-error transition-colors ml-0.5"
+              aria-label={`Remove ${keyword}`}
+              className="text-muted hover:text-error"
             >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
+              Remove
             </button>
           </span>
         ))}

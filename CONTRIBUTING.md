@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping make CampaignCue better.
+Thanks for helping make ManyChat Alternative better.
 
 This project is public because the core Instagram comment-to-DM engine should be inspectable, self-hostable, and useful to builders. The hosted SaaS will monetize managed infrastructure, agency workflows, analytics, reports, support, and templates.
 
@@ -15,9 +15,9 @@ This project is public because the core Instagram comment-to-DM engine should be
 
 Good starting points:
 
-- [Good first issues](https://github.com/im-anishraj/instagram-comment-to-dm/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Agood-first-issue)
-- [Documentation issues](https://github.com/im-anishraj/instagram-comment-to-dm/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Adocs)
-- [Template issues](https://github.com/im-anishraj/instagram-comment-to-dm/issues?q=is%3Aissue+is%3Aopen+label%3Aarea%3Atemplates)
+- [Good first issues](https://github.com/diwenne/manychat_alternative/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Agood-first-issue)
+- [Documentation issues](https://github.com/diwenne/manychat_alternative/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Adocs)
+- [Template issues](https://github.com/diwenne/manychat_alternative/issues?q=is%3Aissue+is%3Aopen+label%3Aarea%3Atemplates)
 
 ## Development Setup
 

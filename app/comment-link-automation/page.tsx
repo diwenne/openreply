@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Comment LINK Automation for Instagram",
     description:
-      "Turn LINK, SHOP, GUIDE, and PRICE comments into tracked private replies with CampaignCue.",
+      "Turn LINK, SHOP, GUIDE, and PRICE comments into tracked private replies with ManyChat Alternative.",
     url: "/comment-link-automation",
   },
 };

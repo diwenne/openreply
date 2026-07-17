@@ -98,7 +98,7 @@ export default function LogsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-wrap gap-2">
@@ -129,7 +129,7 @@ export default function LogsPage() {
       </div>
 
       {/* Table */}
-      <div className="glass rounded-2xl overflow-hidden">
+      <div className="panel rounded overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -148,7 +148,7 @@ export default function LogsPage() {
                   {[...Array(5)].map((_, i) => (
                     <tr key={i}>
                       <td colSpan={6} className="px-6 py-4">
-                        <div className="h-4 bg-zinc-800 rounded animate-pulse" />
+                        <div className="h-4 bg-zinc-800 rounded" />
                       </td>
                     </tr>
                   ))}

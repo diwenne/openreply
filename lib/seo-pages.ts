@@ -11,7 +11,7 @@ export const manychatAlternativePage: SeoPageConfig = {
   eyebrow: "Manychat alternative",
   title: "A focused Manychat alternative for Instagram comment-to-DM campaigns",
   description:
-    "CampaignCue is for teams that do not need a broad chatbot builder. It turns keyword comments into Meta-compliant private replies, tracked links, campaign analytics, and client reports.",
+    "ManyChat Alternative is for teams that do not need a broad chatbot builder. It turns keyword comments into Meta-compliant private replies, tracked links, campaign analytics, and client reports.",
   primaryCta: "Try the focused alternative",
   bullets: [
     "Built around Instagram comments, posts, reels, and private replies.",
@@ -22,7 +22,7 @@ export const manychatAlternativePage: SeoPageConfig = {
   sections: [
     {
       title: "Narrower by design",
-      body: "Broad automation suites can be powerful, but they also add flow-builder weight. CampaignCue keeps the campaign path tight: keyword, post, reply, link, result.",
+      body: "Broad automation suites can be powerful, but they also add flow-builder weight. ManyChat Alternative keeps the campaign path tight: keyword, post, reply, link, result.",
     },
     {
       title: "Agency proof",
@@ -33,29 +33,29 @@ export const manychatAlternativePage: SeoPageConfig = {
       body: "Comment events are processed through webhooks, queued, deduped, checked against limits, and sent as private replies using the comment ID.",
     },
   ],
-  comparisonTitle: "CampaignCue vs broad chatbot builders",
+  comparisonTitle: "ManyChat Alternative vs broad chatbot builders",
   comparisons: [
     {
       label: "Setup",
-      campaignCue: "Create a keyword campaign for a specific post or reel.",
+      ours: "Create a keyword campaign for a specific post or reel.",
       other: "Build and maintain a larger chatbot automation flow.",
     },
     {
       label: "Reporting",
-      campaignCue: "Campaign-level sends, skips, failures, clicks, CTR, and client report links.",
+      ours: "Campaign-level sends, skips, failures, clicks, CTR, and client report links.",
       other: "Usually broader conversation analytics that need cleanup for client reporting.",
     },
     {
       label: "Positioning",
-      campaignCue: "Instagram Campaign OS for agencies and campaign teams.",
+      ours: "Instagram Campaign OS for agencies and campaign teams.",
       other: "General DM automation across many channels and use cases.",
     },
   ],
   templateLinks,
   faqs: [
     {
-      title: "Is CampaignCue a full Manychat replacement?",
-      body: "No. CampaignCue is intentionally focused on Instagram comment-to-DM campaigns. If you need a complete chatbot suite, use a broad platform. If you need fast campaign loops, CampaignCue is built for that.",
+      title: "Is ManyChat Alternative a full Manychat replacement?",
+      body: "No. ManyChat Alternative is intentionally focused on Instagram comment-to-DM campaigns. If you need a complete chatbot suite, use a broad platform. If you need fast campaign loops, ManyChat Alternative is built for that.",
     },
     {
       title: "Does it support agencies?",
@@ -94,17 +94,17 @@ export const templatesSeoPage: SeoPageConfig = {
   comparisons: [
     {
       label: "Speed",
-      campaignCue: "Launch from reusable campaign templates in minutes.",
+      ours: "Launch from reusable campaign templates in minutes.",
       other: "Reply manually or rebuild the same campaign copy each time.",
     },
     {
       label: "Measurement",
-      campaignCue: "Use tracked links and keyword analytics per campaign.",
+      ours: "Use tracked links and keyword analytics per campaign.",
       other: "Rely on screenshots, inbox memory, or scattered link data.",
     },
     {
       label: "Reuse",
-      campaignCue: "Clone the same playbook across posts, reels, and client accounts.",
+      ours: "Clone the same playbook across posts, reels, and client accounts.",
       other: "Repeat setup work for every campaign.",
     },
   ],
@@ -125,7 +125,7 @@ export const agenciesSeoPage: SeoPageConfig = {
   eyebrow: "Instagram DM automation for agencies",
   title: "Instagram DM automation for agencies managing client campaigns",
   description:
-    "CampaignCue gives agencies multi-account workspaces, client-ready reports, tracked links, and a focused comment-to-DM workflow for repeatable Instagram campaigns.",
+    "ManyChat Alternative gives agencies multi-account workspaces, client-ready reports, tracked links, and a focused comment-to-DM workflow for repeatable Instagram campaigns.",
   primaryCta: "Start an agency workspace",
   bullets: [
     "Connect multiple client Instagram accounts on the Agency plan.",
@@ -151,17 +151,17 @@ export const agenciesSeoPage: SeoPageConfig = {
   comparisons: [
     {
       label: "Client reporting",
-      campaignCue: "Public read-only campaign report links with paid-plan unbranded reporting.",
+      ours: "Public read-only campaign report links, unbranded, with no plan gating.",
       other: "Manual screenshots or dashboards that expose too much internal workspace context.",
     },
     {
       label: "Team roles",
-      campaignCue: "Owner, admin, and member roles with invite links.",
+      ours: "Owner, admin, and member roles with invite links.",
       other: "Often one shared login or overpowered teammate access.",
     },
     {
       label: "Account operations",
-      campaignCue: "Per-account filters for campaigns, logs, dashboard stats, and settings.",
+      ours: "Per-account filters for campaigns, logs, dashboard stats, and settings.",
       other: "Client work can get mixed across broad automation workspaces.",
     },
   ],
@@ -208,17 +208,17 @@ export const commentLinkSeoPage: SeoPageConfig = {
   comparisons: [
     {
       label: "Reply accuracy",
-      campaignCue: "Every matched comment gets the campaign reply tied to that post or reel.",
+      ours: "Every matched comment gets the campaign reply tied to that post or reel.",
       other: "Manual replies are easy to miss when comments spike.",
     },
     {
       label: "Tracking",
-      campaignCue: "Tracked links connect private replies to click outcomes.",
+      ours: "Tracked links connect private replies to click outcomes.",
       other: "Regular pasted links rarely show campaign-level performance.",
     },
     {
       label: "Compliance",
-      campaignCue: "Built around official private reply semantics and rate-aware queues.",
+      ours: "Built around official private reply semantics and rate-aware queues.",
       other: "Unsafe browser automation or scraping can put accounts at risk.",
     },
   ],
@@ -229,7 +229,7 @@ export const commentLinkSeoPage: SeoPageConfig = {
       body: "Yes. Each campaign can use multiple keywords such as PRICE, SHOP, GUIDE, PLAN, WAITLIST, TOUR, or your own phrase.",
     },
     {
-      title: "Does CampaignCue send a normal Instagram DM?",
+      title: "Does ManyChat Alternative send a normal Instagram DM?",
       body: "It sends a Meta-compliant private reply triggered by the comment event, using the Instagram comment ID.",
     },
   ],

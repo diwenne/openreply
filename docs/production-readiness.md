@@ -1,6 +1,6 @@
 # Production Readiness
 
-CampaignCue is designed as an open-core product with a hosted SaaS path. This checklist is the launch gate for the hosted version.
+ManyChat Alternative is designed as an open-core product with a hosted SaaS path. This checklist is the launch gate for the hosted version.
 
 ## Runtime Health
 

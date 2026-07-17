@@ -4,7 +4,7 @@ This document turns the roadmap into a practical launch sequence.
 
 ## Positioning
 
-CampaignCue should not launch as a generic chatbot builder.
+ManyChat Alternative should not launch as a generic chatbot builder.
 
 Launch message:
 
@@ -79,7 +79,7 @@ First loop: public templates.
 Second loop: shareable reports.
 
 - Agencies send reports to clients.
-- Free plan reports include subtle CampaignCue branding.
+- Reports are unbranded and available to everyone.
 - Reports show campaign proof.
 - Reports expose campaign results only, not workspace controls.
 

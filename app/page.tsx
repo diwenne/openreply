@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "CampaignCue - Instagram Comment to DM Campaign OS",
+  title: "ManyChat Alternative - Instagram Comment to DM Campaign OS",
   description:
     "A premium self-serve SaaS for turning Instagram keyword comments into Meta-compliant private replies, lead capture, and campaign growth.",
 };
@@ -124,12 +124,12 @@ const foundingOffer = [
 const referralLoop = [
   "Invite an agency operator",
   "They launch a tracked campaign",
-  "Both accounts get future billing credit after paid conversion",
+  "Both accounts get founding-agency onboarding support",
 ];
 
 const faqs = [
   {
-    question: "Does CampaignCue use the official Meta API?",
+    question: "Does ManyChat Alternative use the official Meta API?",
     answer:
       "Yes. The product is built around Meta webhooks and Instagram private replies, not scraping, browser automation, or password sharing.",
   },
@@ -150,65 +150,12 @@ const faqs = [
   },
 ];
 
-function ArrowIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-    </svg>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-5 w-5"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.8}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.091-3.091L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.091-3.091L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.091 3.091L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.091 3.091ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"
-      />
-    </svg>
-  );
-}
-
 function InstagramPost() {
   return (
-    <div className="border border-white/10 bg-zinc-950 p-3 shadow-2xl shadow-black/40">
+    <div className="border border-white/10 bg-zinc-950 p-3 shadow-black/40">
       <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-pink-500 via-orange-400 to-yellow-300" />
+          <div className="h-9 w-9 rounded-full bg-surface border border-border" />
           <div>
             <p className="text-sm font-semibold text-white">@studio.store</p>
             <p className="text-xs text-zinc-500">Reel campaign</p>
@@ -219,7 +166,7 @@ function InstagramPost() {
         </span>
       </div>
 
-      <div className="mt-3 aspect-[4/5] overflow-hidden bg-[linear-gradient(135deg,#f97316_0%,#ec4899_48%,#22d3ee_100%)] p-4">
+      <div className="mt-3 aspect-[4/5] overflow-hidden bg-surface p-4">
         <div className="flex h-full flex-col justify-between border border-white/20 bg-black/20 p-4">
           <p className="text-xs font-semibold text-white/80">New drop</p>
           <div>
@@ -249,7 +196,7 @@ function InstagramPost() {
 
 function BuilderPreview() {
   return (
-    <div className="border border-white/10 bg-zinc-950 shadow-2xl shadow-black/40">
+    <div className="border border-white/10 bg-zinc-950 shadow-black/40">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-white">Product guide reply</p>
@@ -265,7 +212,7 @@ function BuilderPreview() {
           <div className="border border-white/10 bg-white/[0.03] p-4">
             <p className="text-xs font-semibold text-zinc-500">POST OR REEL</p>
             <div className="mt-3 flex items-center gap-3">
-              <div className="h-14 w-14 bg-[linear-gradient(135deg,#f43f5e,#22d3ee)]" />
+              <div className="h-14 w-14 bg-surface" />
               <div>
                 <p className="text-sm font-semibold text-white">Spring drop reel</p>
                 <p className="text-xs text-zinc-500">12.8k views</p>
@@ -314,7 +261,7 @@ function BuilderPreview() {
 
 function DashboardVisual() {
   return (
-    <div className="border border-white/10 bg-zinc-950 p-4 shadow-2xl shadow-black/40">
+    <div className="border border-white/10 bg-zinc-950 p-4 shadow-black/40">
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           ["Active campaigns", "8"],
@@ -357,17 +304,11 @@ function DashboardVisual() {
 
 export default function Home() {
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="absolute inset-0 -z-10 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_82%)]" />
-      <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[linear-gradient(115deg,rgba(34,211,238,0.16),rgba(16,185,129,0.08)_42%,rgba(244,63,94,0.10)_70%,rgba(9,9,11,0)_100%)]" />
-
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-background/80 backdrop-blur-xl">
+    <main className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-5 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3" aria-label="CampaignCue home">
-            <span className="flex h-9 w-9 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-sm font-black text-cyan-100">
-              CC
-            </span>
-            <span className="text-lg font-bold text-white">CampaignCue</span>
+          <Link href="/" className="flex items-center gap-3" aria-label="ManyChat Alternative home">
+            <span className="text-lg font-bold text-white">ManyChat Alternative</span>
           </Link>
 
           <nav className="hidden items-center gap-7 md:flex">
@@ -394,7 +335,6 @@ export default function Home() {
               className="inline-flex items-center justify-center gap-2 bg-cyan-300 px-4 py-2 text-sm font-bold text-zinc-950 transition hover:bg-cyan-200"
             >
               Start free
-              <ArrowIcon />
             </Link>
           </div>
         </div>
@@ -403,7 +343,6 @@ export default function Home() {
       <section className="mx-auto grid w-full max-w-7xl items-center gap-10 px-5 pb-16 pt-12 sm:px-6 sm:pt-18 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:pb-24">
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm font-semibold text-emerald-100">
-            <SparkIcon />
             Built for Meta-compliant Instagram growth
           </div>
 
@@ -412,7 +351,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-300">
-            CampaignCue turns keyword comments on posts and reels into private
+            ManyChat Alternative turns keyword comments on posts and reels into private
             replies, campaign logs, and measurable lead capture for businesses,
             creators, and agencies.
           </p>
@@ -420,10 +359,9 @@ export default function Home() {
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/login"
-              className="inline-flex items-center justify-center gap-2 bg-cyan-300 px-6 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-cyan-950/40 transition hover:bg-cyan-200"
+              className="inline-flex items-center justify-center gap-2 bg-cyan-300 px-6 py-3 text-sm font-bold text-zinc-950 shadow-cyan-950/40 transition hover:bg-cyan-200"
             >
               Start free
-              <ArrowIcon />
             </Link>
             <a
               href="#product"
@@ -529,9 +467,6 @@ export default function Home() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {platformFeatures.slice(0, 4).map((feature) => (
                 <div key={feature} className="flex items-center gap-3 text-sm text-zinc-300">
-                  <span className="text-emerald-200">
-                    <CheckIcon />
-                  </span>
                   {feature}
                 </div>
               ))}
@@ -552,7 +487,6 @@ export default function Home() {
           {campaignCards.map((card) => (
             <article key={card.title} className="border border-white/10 bg-zinc-950 p-5">
               <div className="mb-6 flex h-10 w-10 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-cyan-100">
-                <SparkIcon />
               </div>
               <h3 className="text-xl font-bold text-white">{card.title}</h3>
               <p className="mt-3 text-sm leading-6 text-zinc-400">{card.description}</p>
@@ -580,9 +514,6 @@ export default function Home() {
                 key={feature}
                 className="flex items-center gap-3 border border-white/10 bg-white/[0.035] p-4 text-sm font-semibold text-zinc-200"
               >
-                <span className="text-emerald-200">
-                  <CheckIcon />
-                </span>
                 {feature}
               </div>
             ))}
@@ -635,9 +566,6 @@ export default function Home() {
               <ul className="mt-7 space-y-3">
                 {tier.features.map((feature) => (
                   <li key={feature} className="flex gap-3 text-sm text-zinc-300">
-                    <span className="mt-0.5 text-emerald-200">
-                      <CheckIcon />
-                    </span>
                     {feature}
                   </li>
                 ))}
@@ -652,7 +580,6 @@ export default function Home() {
                 }`}
               >
                 {tier.cta}
-                <ArrowIcon />
               </Link>
             </article>
           ))}
@@ -681,7 +608,6 @@ export default function Home() {
               className="mt-8 inline-flex items-center justify-center gap-2 bg-rose-200 px-6 py-3 text-sm font-bold text-zinc-950 transition hover:bg-rose-100"
             >
               Claim founding access
-              <ArrowIcon />
             </Link>
           </div>
 
@@ -693,9 +619,6 @@ export default function Home() {
               <ul className="mt-6 space-y-3">
                 {foundingOffer.map((item) => (
                   <li key={item} className="flex gap-3 text-sm text-zinc-300">
-                    <span className="mt-0.5 text-rose-200">
-                      <CheckIcon />
-                    </span>
                     {item}
                   </li>
                 ))}
@@ -747,7 +670,7 @@ export default function Home() {
       </section>
 
       <section className="mx-auto w-full max-w-7xl px-5 py-20 sm:px-6 lg:px-8">
-        <div className="grid gap-8 border border-white/10 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(16,185,129,0.10),rgba(244,63,94,0.08))] p-6 sm:p-10 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div className="grid gap-8 border border-white/10 bg-surface p-6 sm:p-10 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
             <p className="text-sm font-bold uppercase text-cyan-100">
               Ready when your next reel goes live
@@ -761,7 +684,6 @@ export default function Home() {
             className="inline-flex items-center justify-center gap-2 bg-cyan-300 px-6 py-3 text-sm font-bold text-zinc-950 transition hover:bg-cyan-200"
           >
             Start free
-            <ArrowIcon />
           </Link>
         </div>
       </section>
@@ -769,10 +691,7 @@ export default function Home() {
       <footer className="border-t border-white/10 py-8">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 text-sm text-zinc-500 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-xs font-black text-cyan-100">
-              CC
-            </span>
-            <span>CampaignCue</span>
+            <span>ManyChat Alternative</span>
           </div>
           <div className="flex flex-wrap gap-4">
             {navLinks.map((link) => (

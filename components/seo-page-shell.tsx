@@ -17,7 +17,7 @@ export interface SeoPageConfig {
   comparisonTitle: string;
   comparisons: Array<{
     label: string;
-    campaignCue: string;
+    ours: string;
     other: string;
   }>;
   templateLinks: Array<{
@@ -25,18 +25,6 @@ export interface SeoPageConfig {
     href: string;
   }>;
   faqs: SeoPageSection[];
-}
-
-function CheckIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-      <path
-        fillRule="evenodd"
-        d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.25 7.31a1 1 0 0 1-1.42 0l-3.25-3.28a1 1 0 1 1 1.42-1.408l2.54 2.563 6.54-6.593a1 1 0 0 1 1.414-.006Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
 }
 
 export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
@@ -79,9 +67,6 @@ export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
             <ul className="mt-5 space-y-4">
               {config.bullets.map((bullet) => (
                 <li key={bullet} className="flex gap-3 text-sm leading-6 text-zinc-300">
-                  <span className="mt-1 text-emerald-200">
-                    <CheckIcon />
-                  </span>
                   {bullet}
                 </li>
               ))}
@@ -107,7 +92,7 @@ export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
           <div className="mt-8 overflow-hidden border border-white/10">
             <div className="grid grid-cols-[0.8fr_1fr_1fr] border-b border-white/10 bg-zinc-950 text-xs font-bold uppercase tracking-wide text-zinc-500">
               <div className="p-4">Need</div>
-              <div className="p-4 text-cyan-100">CampaignCue</div>
+              <div className="p-4 text-cyan-100">ManyChat Alternative</div>
               <div className="p-4">Generic automation</div>
             </div>
             {config.comparisons.map((item) => (
@@ -119,7 +104,7 @@ export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
                   {item.label}
                 </div>
                 <div className="p-4 text-sm leading-6 text-zinc-300">
-                  {item.campaignCue}
+                  {item.ours}
                 </div>
                 <div className="p-4 text-sm leading-6 text-zinc-500">
                   {item.other}
@@ -181,7 +166,7 @@ export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
             Turn the next high-intent comment into a private reply
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-300">
-            CampaignCue is built for Instagram professional accounts, official
+            ManyChat Alternative is built for Instagram professional accounts, official
             Meta private replies, and campaign reporting teams can show clients.
           </p>
           <Link

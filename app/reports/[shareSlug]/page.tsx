@@ -111,7 +111,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
                   href="/"
                   className="mt-4 inline-flex items-center justify-center border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/40"
                 >
-                  Powered by CampaignCue
+                  Powered by ManyChat Alternative
                 </Link>
               )}
             </div>
@@ -299,7 +299,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
 
         {report.branded && (
           <footer className="mt-8 border-t border-white/10 pt-6 text-center text-xs text-zinc-500">
-            Built with CampaignCue, the Instagram comment-to-DM campaign OS.
+            Built with ManyChat Alternative, the Instagram comment-to-DM campaign OS.
           </footer>
         )}
       </section>

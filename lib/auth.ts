@@ -11,7 +11,7 @@ export const authConfig = {
   providers: [
     Resend({
       apiKey: process.env.RESEND_API_KEY ?? "missing-resend-api-key",
-      from: process.env.EMAIL_FROM ?? "CampaignCue <login@example.com>",
+      from: process.env.EMAIL_FROM ?? "ManyChat Alternative <login@example.com>",
     }),
   ],
   callbacks: {

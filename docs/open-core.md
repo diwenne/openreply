@@ -1,6 +1,6 @@
 # Open-Core Model
 
-CampaignCue is built as an open-core product.
+ManyChat Alternative is built as an open-core product.
 
 The core engine stays public so builders can inspect, self-host, fork, and contribute. The hosted business makes money by offering convenience, reliability, agency workflows, analytics, reports, support, and managed infrastructure.
 

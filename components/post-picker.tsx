@@ -76,7 +76,7 @@ export default function PostPicker({
     return (
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="aspect-square rounded-xl bg-zinc-800 animate-pulse" />
+          <div key={i} className="aspect-square rounded bg-zinc-800" />
         ))}
       </div>
     );
@@ -109,9 +109,10 @@ export default function PostPicker({
             key={post.id}
             type="button"
             onClick={() => onSelect(post.id, post.permalink)}
+            aria-pressed={isSelected}
             className={`
-              relative aspect-square rounded-xl overflow-hidden border-2 transition-all
-              ${isSelected ? "border-accent ring-2 ring-accent/30 scale-[1.02]" : "border-transparent hover:border-border-hover"}
+              relative aspect-square rounded overflow-hidden border-2
+              ${isSelected ? "border-accent" : "border-border hover:border-border-hover"}
             `}
           >
             {thumb ? (
@@ -121,18 +122,14 @@ export default function PostPicker({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                <svg className="w-6 h-6 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M2.25 18V6a2.25 2.25 0 0 1 2.25-2.25h15A2.25 2.25 0 0 1 21.75 6v12A2.25 2.25 0 0 1 19.5 20.25H4.5A2.25 2.25 0 0 1 2.25 18Z" />
-                </svg>
+              <div className="w-full h-full bg-surface flex items-center justify-center">
+                <span className="text-xs text-muted">No image</span>
               </div>
             )}
             {isSelected && (
-              <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
-              </div>
+              <span className="absolute bottom-0 inset-x-0 bg-accent text-white text-xs py-1">
+                Selected
+              </span>
             )}
           </button>
         );

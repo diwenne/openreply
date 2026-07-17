@@ -10,7 +10,7 @@ type InvitePageProps = {
 };
 
 export const metadata: Metadata = {
-  title: "Accept Workspace Invitation - CampaignCue",
+  title: "Accept Workspace Invitation - ManyChat Alternative",
   robots: { index: false, follow: false },
 };
 
@@ -36,7 +36,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-5 py-12">
         <Link href="/" className="mb-8 text-sm font-bold text-cyan-100">
-          CampaignCue
+          ManyChat Alternative
         </Link>
         <section className="border border-white/10 bg-white/[0.035] p-8">
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-100">

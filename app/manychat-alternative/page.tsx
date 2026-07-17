@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Manychat Alternative for Instagram Comment-to-DM Campaigns",
     description:
-      "Use CampaignCue for focused Instagram comment-to-DM campaigns without a broad chatbot flow builder.",
+      "Use ManyChat Alternative for focused Instagram comment-to-DM campaigns without a broad chatbot flow builder.",
     url: "/manychat-alternative",
   },
 };

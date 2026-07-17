@@ -5,7 +5,7 @@ import TemplateVisual from "@/components/template-visual";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 
 export const metadata: Metadata = {
-  title: "Instagram Comment to DM Templates - CampaignCue",
+  title: "Instagram Comment to DM Templates - ManyChat Alternative",
   description:
     "Copy ready-to-launch Instagram comment-to-DM campaign templates for product links, lead magnets, real estate, fitness, restaurants, events, and creators.",
   keywords: [

@@ -1,4 +1,4 @@
-# CampaignCue Production Deployment
+# ManyChat Alternative Production Deployment
 
 This app is designed as two deployable services:
 

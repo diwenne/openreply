@@ -4,7 +4,7 @@ A self-hosted ManyChat alternative for Instagram comment-to-DM automation.
 
 Someone comments a keyword like `LINK`, `PRICE`, or `GUIDE` on your post or reel, and they get a DM automatically. Turns comments into Meta-compliant private replies.
 
-This is a fork of [CampaignCue](https://github.com/im-anishraj/instagram-comment-to-dm) with the Stripe billing layer and all plan limits removed — no subscriptions, no checkout, no usage caps. Campaigns, DMs, and connected Instagram accounts are unlimited.
+Completely free. No subscriptions, no checkout, no usage caps. Campaigns, DMs, and connected Instagram accounts are unlimited.
 
 [Templates](app/templates) | [Deployment](DEPLOYMENT.md) | [Production readiness](docs/production-readiness.md) | [Security](SECURITY.md)
 
@@ -69,8 +69,8 @@ http://localhost:3000
 ### Install
 
 ```bash
-git clone https://github.com/im-anishraj/instagram-comment-to-dm.git
-cd instagram-comment-to-dm
+git clone https://github.com/diwenne/manychat_alternative.git
+cd manychat_alternative
 npm install
 ```
 
@@ -147,4 +147,4 @@ npm run build
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Forked from [CampaignCue](https://github.com/im-anishraj/instagram-comment-to-dm), also MIT.
+MIT. See [LICENSE](LICENSE).

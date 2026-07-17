@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import LegalShell from "@/components/legal-shell";
 
 export const metadata: Metadata = {
-  title: "Meta App Review Support - CampaignCue",
+  title: "Meta App Review Support - ManyChat Alternative",
   description:
-    "Meta App Review notes for CampaignCue's official Instagram private reply workflow.",
+    "Meta App Review notes for ManyChat Alternative's official Instagram private reply workflow.",
 };
 
 export default function MetaReviewPage() {
   return (
     <LegalShell
       title="Meta App Review Support"
-      description="CampaignCue is designed for Instagram professional accounts that want to send private replies after keyword comments on their own posts or reels."
+      description="ManyChat Alternative is designed for Instagram professional accounts that want to send private replies after keyword comments on their own posts or reels."
       updatedAt="May 24, 2026"
     >
       <section>
@@ -19,7 +19,7 @@ export default function MetaReviewPage() {
         <p className="mt-3">
           A business owner signs in by email, connects an Instagram professional
           account through Meta OAuth, creates a keyword campaign for a post or
-          reel, and receives a webhook when someone comments. CampaignCue queues
+          reel, and receives a webhook when someone comments. ManyChat Alternative queues
           the event, deduplicates it, checks rate limits, then sends a private
           reply using the comment ID.
         </p>

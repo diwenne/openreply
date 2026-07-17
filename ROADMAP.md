@@ -8,7 +8,7 @@ This roadmap is optimized for three goals:
 
 ## Phase 0: Foundation
 
-Status: merged through issue [#14](https://github.com/im-anishraj/instagram-comment-to-dm/issues/14).
+Status: merged through issue [#14](https://github.com/diwenne/manychat_alternative/issues/14).
 
 - Email magic-link auth.
 - Workspace tenancy.
@@ -22,7 +22,7 @@ Status: merged through issue [#14](https://github.com/im-anishraj/instagram-comm
 
 ## Phase 1: Launch Readiness
 
-Issue: [#7 Production readiness](https://github.com/im-anishraj/instagram-comment-to-dm/issues/7)
+Issue: [#7 Production readiness](https://github.com/diwenne/manychat_alternative/issues/7)
 
 - Resolve dependency audit issues or document safe exceptions.
 - Make monthly usage and rate limits atomic under concurrency.
@@ -32,7 +32,7 @@ Issue: [#7 Production readiness](https://github.com/im-anishraj/instagram-commen
 
 ## Phase 2: Campaign OS
 
-Issue: [#8 Campaign OS repositioning](https://github.com/im-anishraj/instagram-comment-to-dm/issues/8)
+Issue: [#8 Campaign OS repositioning](https://github.com/diwenne/manychat_alternative/issues/8)
 
 - Reposition automations as campaigns.
 - Add campaign goals and outcomes.
@@ -41,7 +41,7 @@ Issue: [#8 Campaign OS repositioning](https://github.com/im-anishraj/instagram-c
 
 ## Phase 3: Viral Template Loop
 
-Issue: [#9 Public campaign templates](https://github.com/im-anishraj/instagram-comment-to-dm/issues/9)
+Issue: [#9 Public campaign templates](https://github.com/diwenne/manychat_alternative/issues/9)
 
 - Add public template library.
 - Add seeded templates for high-intent niches.
@@ -54,8 +54,8 @@ Issue: [#9 Public campaign templates](https://github.com/im-anishraj/instagram-c
 
 Issues:
 
-- [#10 Tracked links and analytics](https://github.com/im-anishraj/instagram-comment-to-dm/issues/10) - done
-- [#11 Shareable client reports](https://github.com/im-anishraj/instagram-comment-to-dm/issues/11) - done
+- [#10 Tracked links and analytics](https://github.com/diwenne/manychat_alternative/issues/10) - done
+- [#11 Shareable client reports](https://github.com/diwenne/manychat_alternative/issues/11) - done
 
 Planned work:
 
@@ -69,8 +69,8 @@ Planned work:
 
 Issues:
 
-- [#12 Agency multi-account support](https://github.com/im-anishraj/instagram-comment-to-dm/issues/12) - done
-- [#13 Founding agency offer and referrals](https://github.com/im-anishraj/instagram-comment-to-dm/issues/13) - done
+- [#12 Agency multi-account support](https://github.com/diwenne/manychat_alternative/issues/12) - done
+- [#13 Founding agency offer and referrals](https://github.com/diwenne/manychat_alternative/issues/13) - done
 
 Planned work:
 
@@ -82,7 +82,7 @@ Planned work:
 
 ## Phase 6: Search And Distribution
 
-Issue: [#14 SEO landing pages](https://github.com/im-anishraj/instagram-comment-to-dm/issues/14) - done
+Issue: [#14 SEO landing pages](https://github.com/diwenne/manychat_alternative/issues/14) - done
 
 - Manychat alternative landing page.
 - Instagram comment-to-DM templates page.

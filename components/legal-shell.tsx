@@ -18,10 +18,7 @@ export default function LegalShell({
       <header className="border-b border-white/10">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
           <Link href="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center border border-cyan-200/20 bg-cyan-300/10 text-sm font-black text-cyan-100">
-              CC
-            </span>
-            <span className="text-lg font-bold text-white">CampaignCue</span>
+            <span className="text-lg font-bold text-white">ManyChat Alternative</span>
           </Link>
           <Link
             href="/login"

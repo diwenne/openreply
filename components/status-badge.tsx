@@ -1,17 +1,15 @@
 /**
- * Status Badge
- *
- * Color-coded badge for DM status.
+ * Status label for DM status. Plain text; color carries the state.
  */
 
-const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  SENT: { bg: "bg-success/10", text: "text-success", dot: "bg-success", label: "Sent" },
-  FAILED: { bg: "bg-error/10", text: "text-error", dot: "bg-error", label: "Failed" },
-  PENDING: { bg: "bg-warning/10", text: "text-warning", dot: "bg-warning", label: "Pending" },
-  SKIPPED_DEDUP: { bg: "bg-zinc-500/10", text: "text-zinc-400", dot: "bg-zinc-400", label: "Dedup" },
-  SKIPPED_RATE_LIMIT: { bg: "bg-warning/10", text: "text-warning", dot: "bg-warning", label: "Rate Limited" },
-  SKIPPED_PLAN_LIMIT: { bg: "bg-warning/10", text: "text-warning", dot: "bg-warning", label: "Plan Limit" },
-  SKIPPED_NO_MATCH: { bg: "bg-zinc-500/10", text: "text-zinc-400", dot: "bg-zinc-400", label: "No Match" },
+const statusConfig: Record<string, { text: string; label: string }> = {
+  SENT: { text: "text-success", label: "Sent" },
+  FAILED: { text: "text-error", label: "Failed" },
+  PENDING: { text: "text-warning", label: "Pending" },
+  SKIPPED_DEDUP: { text: "text-muted", label: "Dedup" },
+  SKIPPED_RATE_LIMIT: { text: "text-warning", label: "Rate limited" },
+  SKIPPED_PLAN_LIMIT: { text: "text-warning", label: "Skipped" },
+  SKIPPED_NO_MATCH: { text: "text-muted", label: "No match" },
 };
 
 interface StatusBadgeProps {
@@ -21,10 +19,5 @@ interface StatusBadgeProps {
 export default function StatusBadge({ status }: StatusBadgeProps) {
   const config = statusConfig[status] ?? statusConfig.PENDING;
 
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
-      {config.label}
-    </span>
-  );
+  return <span className={`text-sm ${config.text}`}>{config.label}</span>;
 }

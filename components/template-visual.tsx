@@ -1,14 +1,5 @@
 import type { CampaignTemplate } from "@/lib/templates/campaign-templates";
 
-const accentClasses: Record<CampaignTemplate["accent"], string> = {
-  cyan: "from-cyan-300/25 via-cyan-300/10 to-zinc-950 border-cyan-200/25 text-cyan-100",
-  emerald:
-    "from-emerald-300/25 via-emerald-300/10 to-zinc-950 border-emerald-200/25 text-emerald-100",
-  rose: "from-rose-300/25 via-rose-300/10 to-zinc-950 border-rose-200/25 text-rose-100",
-  amber:
-    "from-amber-300/25 via-amber-300/10 to-zinc-950 border-amber-200/25 text-amber-100",
-};
-
 interface TemplateVisualProps {
   template: CampaignTemplate;
   compact?: boolean;
@@ -19,12 +10,8 @@ export default function TemplateVisual({
   compact = false,
 }: TemplateVisualProps) {
   return (
-    <div
-      className={`border bg-gradient-to-br p-4 shadow-2xl shadow-black/30 ${
-        accentClasses[template.accent]
-      }`}
-    >
-      <div className="border border-white/10 bg-zinc-950/80 p-4">
+    <div className="border border-border p-4">
+      <div className="border border-border bg-surface p-4">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">

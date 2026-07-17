@@ -118,10 +118,10 @@ export default function NewCampaignPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in">
+    <div className="max-w-2xl mx-auto">
       <form onSubmit={handleSubmit} className="space-y-8">
         {error && (
-          <div className="p-4 rounded-xl bg-error/10 border border-error/20 text-error text-sm">
+          <div className="p-4 rounded bg-error/10 border border-error/20 text-error text-sm">
             {error}
           </div>
         )}
@@ -151,7 +151,7 @@ export default function NewCampaignPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Product launch link drop"
-            className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
             maxLength={100}
           />
         </div>
@@ -164,7 +164,7 @@ export default function NewCampaignPage() {
           <select
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-foreground focus:border-accent/40 focus:outline-none transition-colors"
+            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground focus:border-accent/40 focus:outline-none transition-colors"
           >
             <option value="">Select a goal</option>
             <option value="Lead magnet delivery">Lead magnet delivery</option>
@@ -189,7 +189,7 @@ export default function NewCampaignPage() {
               label="Connected profile"
             />
           ) : (
-            <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground">
+            <div className="rounded border border-border bg-surface px-4 py-3 text-sm text-foreground">
               Connect Instagram before launching a campaign
             </div>
           )}
@@ -203,7 +203,7 @@ export default function NewCampaignPage() {
           <p className="text-xs text-muted mb-3">
             Choose which Instagram post or reel should trigger the campaign.
           </p>
-          <div className="glass rounded-xl p-4">
+          <div className="panel rounded p-4">
             <PostPicker
               selectedPostId={postId}
               instagramAccountId={selectedAccountId}
@@ -236,7 +236,7 @@ export default function NewCampaignPage() {
             onChange={(e) => setDmMessage(e.target.value)}
             placeholder="Hey {username}! Here's the link you asked for: https://..."
             rows={4}
-            className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors resize-none"
+            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors resize-none"
             maxLength={1000}
           />
           <p className="text-xs text-muted">
@@ -255,7 +255,7 @@ export default function NewCampaignPage() {
             value={trackedDestinationUrl}
             onChange={(e) => setTrackedDestinationUrl(e.target.value)}
             placeholder="https://yourlink.com/offer"
-            className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
           />
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted">
@@ -332,24 +332,14 @@ export default function NewCampaignPage() {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+            className="px-5 py-2 rounded bg-accent text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50 disabled:pointer-events-none"
           >
-            {saving ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Creating...
-              </>
-            ) : (
-              "Create Campaign"
-            )}
+            {saving ? "Creating..." : "Create Campaign"}
           </button>
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-6 py-3 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover border border-border transition-colors"
+            className="px-5 py-2 rounded text-sm text-muted hover:text-foreground border border-border"
           >
             Cancel
           </button>

@@ -1,29 +1,24 @@
 @import "tailwindcss";
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   CampaignCue — Design System
-   Dark-mode-first with indigo/violet accents and glassmorphism
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ManyChat Alternative — Design System
+   Plain and functional. No gradients, glass, glow, or animation. */
 
 @theme inline {
-  --color-background: #09090b;
-  --color-foreground: #fafafa;
-  --color-surface: #18181b;
-  --color-surface-hover: #27272a;
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-hover: rgba(255, 255, 255, 0.12);
-  --color-muted: #a1a1aa;
-  --color-accent: #818cf8;
-  --color-accent-hover: #6366f1;
-  --color-accent-glow: rgba(129, 140, 248, 0.15);
-  --color-success: #34d399;
+  --color-background: #0b0b0d;
+  --color-foreground: #f4f4f5;
+  --color-surface: #161618;
+  --color-surface-hover: #1f1f22;
+  --color-border: #2e2e33;
+  --color-border-hover: #45454d;
+  --color-muted: #9b9ba3;
+  --color-accent: #6b8afd;
+  --color-accent-hover: #5372e8;
+  --color-success: #4ade80;
   --color-error: #f87171;
   --color-warning: #fbbf24;
-  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, monospace;
 }
-
-/* ─── Base ─────────────────────────────────────────────────────────────── */
 
 html {
   color-scheme: dark;
@@ -35,85 +30,42 @@ body {
   font-family: var(--font-sans);
 }
 
-/* ─── Custom Scrollbar ─────────────────────────────────────────────────── */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Focus ring — visible, for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Panel — flat container. Replaces .glass / .glass-strong. */
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 100px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* ─── Glassmorphism ────────────────────────────────────────────────────── */
-
-.glass {
-  background: rgba(24, 24, 27, 0.7);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
+/* Kept as no-op aliases so existing markup degrades to plain surfaces
+   instead of breaking. Prefer .panel in new code. */
+.glass,
 .glass-strong {
-  background: rgba(24, 24, 27, 0.85);
-  backdrop-filter: blur(24px) saturate(200%);
-  -webkit-backdrop-filter: blur(24px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
-
-/* ─── Gradient Backgrounds ─────────────────────────────────────────────── */
 
 .gradient-mesh {
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 40% 80%, rgba(79, 70, 229, 0.04) 0%, transparent 50%);
+  background: none;
 }
 
-/* ─── Animations ───────────────────────────────────────────────────────── */
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+.animate-fade-in,
+.animate-slide-in,
+.animate-pulse-glow,
+.stagger > * {
+  animation: none;
 }
 
-@keyframes slide-in-left {
-  from { opacity: 0; transform: translateX(-12px); }
-  to { opacity: 1; transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(129, 140, 248, 0); }
-  50% { box-shadow: 0 0 20px 4px rgba(129, 140, 248, 0.15); }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.4s ease-out both;
-}
-
-.animate-slide-in {
-  animation: slide-in-left 0.3s ease-out both;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 3s ease-in-out infinite;
-}
-
-/* ─── Staggered children ───────────────────────────────────────────────── */
-
-.stagger > *:nth-child(1) { animation-delay: 0ms; }
-.stagger > *:nth-child(2) { animation-delay: 60ms; }
-.stagger > *:nth-child(3) { animation-delay: 120ms; }
-.stagger > *:nth-child(4) { animation-delay: 180ms; }
-.stagger > *:nth-child(5) { animation-delay: 240ms; }
-.stagger > *:nth-child(6) { animation-delay: 300ms; }

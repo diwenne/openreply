@@ -1,4 +1,4 @@
-// CampaignCue — B2B Instagram Comment → DM SaaS schema
+// ManyChat Alternative — B2B Instagram Comment → DM SaaS schema
 
 generator client {
   provider = "prisma-client"
