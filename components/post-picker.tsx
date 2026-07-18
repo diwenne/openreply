@@ -24,7 +24,12 @@ interface InstagramPost {
 interface PostPickerProps {
   selectedPostId: string | null;
   instagramAccountId?: string | null;
-  onSelect: (postId: string, postUrl?: string, thumbUrl?: string) => void;
+  onSelect: (
+    postId: string,
+    postUrl?: string,
+    thumbUrl?: string,
+    caption?: string
+  ) => void;
 }
 
 export default function PostPicker({
@@ -108,7 +113,7 @@ export default function PostPicker({
           <button
             key={post.id}
             type="button"
-            onClick={() => onSelect(post.id, post.permalink, thumb)}
+            onClick={() => onSelect(post.id, post.permalink, thumb, post.caption)}
             aria-pressed={isSelected}
             className={`
               relative aspect-square rounded overflow-hidden border-2

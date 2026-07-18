@@ -58,6 +58,7 @@ export interface InstagramUser {
   user_id?: string;
   username: string;
   name?: string;
+  profile_picture_url?: string;
 }
 
 export interface InstagramComment {
@@ -187,7 +188,10 @@ export async function getMediaComments(
 
 export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
   const url = new URL(`${instagramGraphBase()}/me`);
-  url.searchParams.set("fields", "id,user_id,username,name");
+  url.searchParams.set(
+    "fields",
+    "id,user_id,username,name,profile_picture_url"
+  );
   url.searchParams.set("access_token", accessToken);
 
   const response = await fetch(url.toString());

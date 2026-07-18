@@ -36,6 +36,7 @@ interface LoadedCampaign {
   openingDmButtonLabel: string | null;
   publicReplyEnabled: boolean;
   publicReplyMessage: string | null;
+  isActive: boolean;
   instagramAccountId: string;
   trackedLinks?: { destinationUrl: string }[];
 }
@@ -125,10 +126,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
+
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
   const [postThumb, setPostThumb] = useState<string | null>(null);
+  const [postCaption, setPostCaption] = useState("");
 
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
   const [keywordText, setKeywordText] = useState("");
@@ -154,6 +159,24 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         .filter(Boolean),
     [keywordText]
   );
+
+  // Fetch the connected account's real avatar for the preview.
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ instagramAccountId: selectedAccountId });
+    fetch(`/api/instagram/profile?${params}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setAvatarUrl(d.success ? d.data.profilePictureUrl ?? null : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAvatarUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAccountId]);
 
   // Load accounts (both modes need them for the preview username + selector).
   useEffect(() => {
@@ -194,6 +217,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
+        setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
         setTrackedDestinationUrl(link);
         setLinkOpen(Boolean(link));
@@ -205,17 +229,23 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const username =
     accounts.find((a) => a.id === selectedAccountId)?.username ?? "yourbrand";
 
-  function handlePostSelect(id: string, url?: string, thumb?: string) {
+  function handlePostSelect(
+    id: string,
+    url?: string,
+    thumb?: string,
+    caption?: string
+  ) {
     setPostId(id);
     setPostUrl(url ?? null);
     setPostThumb(thumb ?? null);
+    setPostCaption(caption ?? "");
   }
 
   function ensureLinkToken() {
     setDmMessage((cur) => (cur.includes("{link}") ? cur : `${cur.trim()} {link}`.trim()));
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(activeValue: boolean) {
     setError(null);
 
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
@@ -245,7 +275,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       publicReplyEnabled,
       publicReplyMessage: publicReplyEnabled ? publicReplyMessage : null,
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
-      isActive: true,
+      isActive: activeValue,
     };
 
     try {
@@ -290,7 +320,60 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
+    <div className="space-y-6">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {mode === "edit" ? (
+            <>
+              <span className="truncate text-sm font-semibold text-foreground">
+                {name || "Untitled campaign"}
+              </span>
+              <span
+                className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                  isActive ? "bg-success/15 text-success" : "bg-zinc-500/15 text-zinc-400"
+                }`}
+              >
+                {isActive ? "LIVE" : "PAUSED"}
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-muted">New campaign</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {mode === "edit" &&
+            (isActive ? (
+              <button
+                type="button"
+                onClick={() => handleSubmit(false)}
+                disabled={saving}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground disabled:opacity-50"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleSubmit(true)}
+                disabled={saving}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground disabled:opacity-50"
+              >
+                Go Live
+              </button>
+            ))}
+          <button
+            type="button"
+            onClick={() => handleSubmit(mode === "new" ? true : isActive)}
+            disabled={saving}
+            className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {saving ? "Saving…" : mode === "new" ? "Go Live" : "Save changes"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
       {/* Left: controls */}
       <div className="space-y-8">
         {error && (
@@ -301,7 +384,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
         <div className="space-y-2">
           <label className="text-sm font-semibold text-foreground">
-            Campaign name
+            Campaign name{" "}
+            <span className="font-normal text-muted">(optional)</span>
           </label>
           <input
             value={name}
@@ -471,28 +555,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
       {/* Right: preview */}
       <div>
-        <div className="mb-6 flex items-center justify-between">
-          <span className="text-sm text-muted">Preview</span>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {saving
-              ? "Saving…"
-              : mode === "new"
-                ? "Go Live"
-                : "Save changes"}
-          </button>
-        </div>
+        <p className="mb-4 text-sm text-muted">Preview</p>
         <div className="lg:sticky lg:top-6">
           <CampaignPreview
             tab={previewTab}
             onTabChange={setPreviewTab}
             username={username}
+            avatarUrl={avatarUrl}
             postThumb={postThumb}
+            caption={postCaption}
             sampleComment={keywords[0] ?? ""}
+            publicReplyEnabled={publicReplyEnabled}
+            publicReplyMessage={publicReplyMessage}
             openingDmEnabled={openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
@@ -500,6 +574,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             hasLink={Boolean(trackedDestinationUrl.trim())}
           />
         </div>
+      </div>
       </div>
     </div>
   );
