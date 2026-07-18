@@ -11,20 +11,27 @@ import {
   getCurrentWorkspaceContext,
 } from "@/lib/workspace-access";
 
-const createAutomationSchema = z.object({
-  name: z.string().min(1).max(100),
-  goal: z.string().min(1).max(120).optional().nullable(),
-  instagramAccountId: z.string().min(1).optional().nullable(),
-  postId: z.string().min(1),
-  postUrl: z.string().url().optional().nullable(),
-  keywords: z.array(z.string().min(1).max(50)).min(1).max(10),
-  dmMessage: z.string().min(1).max(1000),
-  publicReplyEnabled: z.boolean().optional().default(false),
-  publicReplyMessage: z.string().max(1000).optional().nullable(),
-  trackedDestinationUrl: z.string().url().optional().nullable(),
-  isActive: z.boolean().optional().default(true),
-  wholeWordMatch: z.boolean().optional().default(true),
-});
+const createAutomationSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    goal: z.string().min(1).max(120).optional().nullable(),
+    instagramAccountId: z.string().min(1).optional().nullable(),
+    postId: z.string().min(1).optional().nullable(),
+    postUrl: z.string().url().optional().nullable(),
+    pendingNextReel: z.boolean().optional().default(false),
+    keywords: z.array(z.string().min(1).max(50)).min(1).max(10),
+    dmMessage: z.string().min(1).max(1000),
+    publicReplyEnabled: z.boolean().optional().default(false),
+    publicReplyMessage: z.string().max(1000).optional().nullable(),
+    trackedDestinationUrl: z.string().url().optional().nullable(),
+    isActive: z.boolean().optional().default(true),
+    wholeWordMatch: z.boolean().optional().default(true),
+  })
+  // A campaign must target either a specific post or the next posted reel.
+  .refine((data) => data.pendingNextReel || Boolean(data.postId), {
+    message: "Select a post or choose to attach to your next reel",
+    path: ["postId"],
+  });
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -257,12 +264,16 @@ export async function POST(request: NextRequest) {
 
   const { trackedDestinationUrl } = parsed.data;
 
+  const pendingNextReel = parsed.data.pendingNextReel;
+
   const automation = await prisma.automation.create({
     data: {
       name: parsed.data.name,
       goal: parsed.data.goal,
-      postId: parsed.data.postId,
-      postUrl: parsed.data.postUrl,
+      // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
+      postId: pendingNextReel ? null : parsed.data.postId,
+      postUrl: pendingNextReel ? null : parsed.data.postUrl,
+      pendingNextReel,
       keywords: parsed.data.keywords,
       dmMessage: parsed.data.dmMessage,
       publicReplyEnabled: parsed.data.publicReplyEnabled,

@@ -16,6 +16,7 @@ interface Campaign {
   name: string;
   goal: string | null;
   postUrl: string | null;
+  pendingNextReel: boolean;
   keywords: string[];
   dmMessage: string;
   isActive: boolean;
@@ -54,6 +55,7 @@ export default function EditCampaignPage() {
   const [publicReplyMessage, setPublicReplyMessage] = useState("");
   const [username, setUsername] = useState("");
   const [postUrl, setPostUrl] = useState<string | null>(null);
+  const [pendingNextReel, setPendingNextReel] = useState(false);
 
   useEffect(() => {
     fetch("/api/automations")
@@ -78,6 +80,7 @@ export default function EditCampaignPage() {
         setPublicReplyMessage(found.publicReplyMessage ?? "");
         setUsername(found.instagramAccount.username);
         setPostUrl(found.postUrl);
+        setPendingNextReel(found.pendingNextReel);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -155,6 +158,15 @@ export default function EditCampaignPage() {
         <div className="panel rounded p-4 text-sm text-muted">
           Editing a campaign for{" "}
           <span className="text-foreground font-medium">@{username}</span>.
+          {pendingNextReel && (
+            <>
+              {" "}
+              <span className="text-amber-400 font-medium">
+                Waiting for your next reel
+              </span>{" "}
+              — it will attach automatically once you post one.
+            </>
+          )}
           {postUrl && (
             <>
               {" "}

@@ -25,6 +25,7 @@ interface CampaignDraft {
   selectedAccountId: string;
   postId: string | null;
   postUrl?: string;
+  targetNextReel: boolean;
   keywords: string[];
   dmMessage: string;
   trackedDestinationUrl: string;
@@ -50,6 +51,9 @@ export default function NewCampaignPage() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | undefined>();
+  // When true, the campaign attaches to the next reel the user posts instead
+  // of an existing post.
+  const [targetNextReel, setTargetNextReel] = useState(false);
   const [keywords, setKeywords] = useState<string[]>(
     selectedTemplate?.keywords ?? []
   );
@@ -77,7 +81,7 @@ export default function NewCampaignPage() {
     name: !name.trim(),
     goal: !goal,
     account: accounts.length === 0 || !selectedAccountId,
-    post: !postId,
+    post: !targetNextReel && !postId,
     keywords: keywords.length === 0,
     dmMessage: !dmMessage.trim(),
   };
@@ -128,6 +132,8 @@ export default function NewCampaignPage() {
         if (draft.selectedAccountId) setSelectedAccountId(draft.selectedAccountId);
         if (draft.postId) setPostId(draft.postId);
         if (draft.postUrl) setPostUrl(draft.postUrl);
+        if (typeof draft.targetNextReel === "boolean")
+          setTargetNextReel(draft.targetNextReel);
         if (draft.keywords?.length) setKeywords(draft.keywords);
         if (draft.dmMessage) setDmMessage(draft.dmMessage);
         if (draft.trackedDestinationUrl)
@@ -156,6 +162,7 @@ export default function NewCampaignPage() {
       selectedAccountId,
       postId,
       postUrl,
+      targetNextReel,
       keywords,
       dmMessage,
       trackedDestinationUrl,
@@ -176,6 +183,7 @@ export default function NewCampaignPage() {
     selectedAccountId,
     postId,
     postUrl,
+    targetNextReel,
     keywords,
     dmMessage,
     trackedDestinationUrl,
@@ -222,8 +230,9 @@ export default function NewCampaignPage() {
           name,
           goal,
           instagramAccountId: selectedAccountId,
-          postId,
-          postUrl: postUrl ?? null,
+          postId: targetNextReel ? null : postId,
+          postUrl: targetNextReel ? null : (postUrl ?? null),
+          pendingNextReel: targetNextReel,
           keywords,
           dmMessage,
           publicReplyEnabled,
@@ -339,18 +348,54 @@ export default function NewCampaignPage() {
             Campaign Post Or Reel <span className="text-error">*</span>
           </label>
           <p className="text-xs text-muted mb-3">
-            Choose which Instagram post or reel should trigger the campaign.
+            Choose an existing post, or set the campaign up now and attach it to
+            the next reel you post.
           </p>
-          <div className={`panel rounded p-4 border ${borderClass(missing.post)}`}>
-            <PostPicker
-              selectedPostId={postId}
-              instagramAccountId={selectedAccountId}
-              onSelect={(id, url) => {
-                setPostId(id);
-                setPostUrl(url);
-              }}
-            />
-          </div>
+
+          {/* Target mode toggle */}
+          <label className="flex items-center gap-3 cursor-pointer mb-3">
+            <button
+              type="button"
+              onClick={() => setTargetNextReel(!targetNextReel)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                targetNextReel ? "bg-accent" : "bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  targetNextReel ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+            <div>
+              <span className="text-sm font-medium text-foreground">
+                Attach to my next posted reel
+              </span>
+              <p className="text-xs text-muted">
+                Create the campaign now, then post your reel — it attaches
+                automatically within ~15 minutes.
+              </p>
+            </div>
+          </label>
+
+          {targetNextReel ? (
+            <div className="panel rounded p-4 border border-border text-sm text-muted">
+              Waiting for your next reel. After you publish it, this campaign
+              starts listening for comment keywords on that reel — no need to
+              come back and pick a post.
+            </div>
+          ) : (
+            <div className={`panel rounded p-4 border ${borderClass(missing.post)}`}>
+              <PostPicker
+                selectedPostId={postId}
+                instagramAccountId={selectedAccountId}
+                onSelect={(id, url) => {
+                  setPostId(id);
+                  setPostUrl(url);
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Keywords */}

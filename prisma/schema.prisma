@@ -151,8 +151,9 @@ model Automation {
 
   name           String
   goal           String?
-  postId         String
+  postId         String?
   postUrl        String?
+  pendingNextReel Boolean @default(false)
   keywords       String[]
   dmMessage      String
   publicReplyEnabled Boolean @default(false)

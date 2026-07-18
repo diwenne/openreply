@@ -14,8 +14,9 @@ interface Campaign {
   id: string;
   name: string;
   goal: string | null;
-  postId: string;
+  postId: string | null;
   postUrl: string | null;
+  pendingNextReel: boolean;
   keywords: string[];
   dmMessage: string;
   isActive: boolean;
@@ -199,6 +200,12 @@ export default function CampaignsPage() {
             />
           )}
           <Link
+            href="/campaigns/import"
+            className="px-4 py-2 rounded border border-border text-sm font-medium text-muted hover:text-foreground"
+          >
+            Import
+          </Link>
+          <Link
             href="/campaigns/new"
             className="px-4 py-2 rounded bg-accent text-sm font-medium text-white hover:bg-accent-hover"
           >
@@ -228,7 +235,7 @@ export default function CampaignsPage() {
         {automations.map((auto) => (
           <div key={auto.id} className="panel rounded p-6 hover:border-border-hover transition-all">
             <div className="flex items-start justify-between gap-4">
-              {thumbnails[auto.postId] && (
+              {auto.postId && thumbnails[auto.postId] && (
                 <a
                   href={auto.postUrl ?? "#"}
                   target="_blank"
@@ -261,6 +268,11 @@ export default function CampaignsPage() {
                   >
                     {auto.isActive ? "Active" : "Paused"}
                   </span>
+                  {auto.pendingNextReel && (
+                    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+                      Waiting for next reel
+                    </span>
+                  )}
                 </div>
 
                 {auto.goal && (
