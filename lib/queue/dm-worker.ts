@@ -283,7 +283,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           },
           {
             delay: rateLimit.requeueDelayMs,
-            jobId: `comment:${instagramAccountId}:${commentId}:retry:${requeueAttempt + 1}`,
+            jobId: `comment_${instagramAccountId}_${commentId}_retry_${requeueAttempt + 1}`,
           }
         );
         continue;

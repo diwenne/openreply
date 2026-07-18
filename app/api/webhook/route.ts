@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           mediaId: event.mediaId,
         },
         {
-          jobId: `comment:${event.instagramAccountId}:${event.commentId}`,
+          jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
         }
       );
 
@@ -124,9 +124,11 @@ export async function POST(request: NextRequest) {
           mid: event.mid,
         },
         {
-          jobId: `postback:${event.instagramAccountId}:${event.userId}:${
+          // BullMQ forbids ":" in custom job ids, and the payload is
+          // "reveal:<id>", so build with underscores and strip any colons.
+          jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
             event.mid ?? event.payload
-          }`,
+          ).replace(/:/g, "_")}`,
         }
       );
     }
