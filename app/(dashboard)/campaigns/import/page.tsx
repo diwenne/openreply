@@ -14,9 +14,9 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { parseCsv } from "@/lib/utils/csv";
 import { IMPORT_QUEUE_KEY, IMPORT_ACCOUNT_KEY } from "@/lib/import-queue";
 
-const SAMPLE = `keywords,dm_message,public_reply,tracked_url
-"yc","hey there! here it is: {link}","sent. check dms","https://events.ycombinator.com/startup-school-2026"
-"LINK,SHOP","grab it here: {link}","dmed u",`;
+const SAMPLE = `keywords,dm_message,public_reply,tracked_url,opening_dm,opening_dm_button
+"yc","here it is: {link}","sent. check dms","https://events.ycombinator.com/startup-school-2026","hey! click below for the referral","send link"
+"LINK,SHOP","grab it here: {link}","dmed u",,,`;
 
 export default function ImportCampaignsPage() {
   const router = useRouter();
@@ -65,6 +65,8 @@ export default function ImportCampaignsPage() {
         dmMessage,
         publicReply: (r.public_reply ?? "").trim(),
         trackedUrl: (r.tracked_url ?? "").trim(),
+        openingDmMessage: (r.opening_dm ?? "").trim(),
+        openingDmButtonLabel: (r.opening_dm_button ?? "").trim(),
       });
     }
 
@@ -92,8 +94,10 @@ export default function ImportCampaignsPage() {
           <code className="text-accent">dm_message</code>. Optional:{" "}
           <code className="text-accent">name</code>,{" "}
           <code className="text-accent">public_reply</code>,{" "}
-          <code className="text-accent">tracked_url</code>. Keywords go in one
-          cell, separated by commas. Use{" "}
+          <code className="text-accent">tracked_url</code>,{" "}
+          <code className="text-accent">opening_dm</code>,{" "}
+          <code className="text-accent">opening_dm_button</code>. Keywords go in
+          one cell, separated by commas. Use{" "}
           <code className="text-accent">{"{link}"}</code> in the message to
           insert the tracked link.
         </p>

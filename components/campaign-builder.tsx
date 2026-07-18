@@ -271,6 +271,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setDmMessage(row.dmMessage ?? "");
     setPublicReplyEnabled(Boolean(row.publicReply));
     setPublicReplyMessages(row.publicReply ? [row.publicReply] : [""]);
+    const hasOpening = Boolean(row.openingDmMessage);
+    setOpeningDmEnabled(hasOpening);
+    setOpeningDmMessage(row.openingDmMessage ?? "");
+    setOpeningDmButtonLabel(
+      row.openingDmButtonLabel || (hasOpening ? "Send link" : "")
+    );
     const link = row.trackedUrl ?? "";
     setTrackedDestinationUrl(link);
     setLinkOpen(Boolean(link));

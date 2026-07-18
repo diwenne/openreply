@@ -11,4 +11,6 @@ export interface ImportRow {
   dmMessage: string;
   publicReply: string;
   trackedUrl: string;
+  openingDmMessage: string;
+  openingDmButtonLabel: string;
 }
