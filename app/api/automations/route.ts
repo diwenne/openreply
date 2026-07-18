@@ -38,7 +38,11 @@ const createAutomationSchema = z
       .max(10)
       .optional()
       .default([]),
-    trackedDestinationUrl: z.string().url().optional().nullable(),
+    // Empty string means "no tracked link"; a URL sets one.
+    trackedDestinationUrl: z
+      .union([z.string().url(), z.literal("")])
+      .optional()
+      .nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })

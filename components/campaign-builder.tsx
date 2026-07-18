@@ -403,7 +403,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         router.push("/campaigns");
         router.refresh();
       } else {
-        setError(data.error ?? "Failed to save campaign");
+        // Surface the specific field that failed validation instead of a
+        // generic "Invalid input".
+        const fieldErrors = data.details?.fieldErrors as
+          | Record<string, string[]>
+          | undefined;
+        const firstField = fieldErrors && Object.keys(fieldErrors)[0];
+        setError(
+          firstField
+            ? `${firstField}: ${fieldErrors[firstField][0]}`
+            : data.error ?? "Failed to save campaign"
+        );
+        if (typeof window !== "undefined")
+          window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch {
       setError("Failed to save campaign");
