@@ -45,6 +45,8 @@ export default function PostPicker({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The post currently hovered — its video (if it's a reel) plays a preview.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,11 +154,18 @@ export default function PostPicker({
               const usedByName = usedPostIds?.[post.id];
               const isUsed = Boolean(usedByName) && !isSelected;
               const thumb = post.thumbnail_url ?? post.media_url;
+              const isVideo = post.media_type === "VIDEO";
+              const showVideo =
+                isVideo && hoveredId === post.id && Boolean(post.media_url);
               return (
           <button
             key={post.id}
             type="button"
             onClick={() => onSelect(post.id, post.permalink, thumb, post.caption)}
+            onMouseEnter={() => setHoveredId(post.id)}
+            onMouseLeave={() =>
+              setHoveredId((cur) => (cur === post.id ? null : cur))
+            }
             aria-pressed={isSelected}
             title={isUsed ? `Already used by "${usedByName}"` : undefined}
             className={`
@@ -180,6 +189,20 @@ export default function PostPicker({
               <div className="w-full h-full bg-surface flex items-center justify-center">
                 <span className="text-xs text-muted">No image</span>
               </div>
+            )}
+            {showVideo && (
+              <video
+                src={post.media_url}
+                poster={thumb}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="none"
+                className={`absolute inset-0 h-full w-full object-cover ${
+                  isUsed ? "opacity-60" : ""
+                }`}
+              />
             )}
             {isSelected && (
               <span className="absolute bottom-0 inset-x-0 bg-accent text-white text-xs py-1">
