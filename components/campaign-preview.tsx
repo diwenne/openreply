@@ -320,11 +320,9 @@ function DmScreen({
           <>
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
-              <div className="flex max-w-[80%] flex-col gap-1">
-                <div className="rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
-                  <p className="whitespace-pre-wrap text-sm">{openingDmMessage || "Your opening message…"}</p>
-                </div>
-                <div className="rounded-2xl bg-zinc-700 px-4 py-3 text-center text-sm font-medium text-white">
+              <div className="max-w-[80%] overflow-hidden rounded-2xl rounded-bl-md bg-zinc-800">
+                <p className="whitespace-pre-wrap px-3 py-2 text-sm">{openingDmMessage || "Your opening message…"}</p>
+                <div className="mx-1.5 mb-1.5 rounded-xl bg-zinc-700 px-4 py-2.5 text-center text-sm font-medium text-white">
                   {openingDmButtonLabel || "Button label"}
                 </div>
               </div>
@@ -346,20 +344,18 @@ function DmScreen({
           return (
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
-              <div className="flex max-w-[80%] flex-col gap-1">
+              <div className="max-w-[80%] overflow-hidden rounded-2xl rounded-bl-md bg-zinc-800">
                 {(!showCard || bodyText) && (
-                  <div className="rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
-                    <p className="whitespace-pre-wrap text-sm">
-                      {!revealMessage
-                        ? "Write a message"
-                        : showCard
-                          ? bodyText
-                          : renderMessage(revealMessage, hasLink)}
-                    </p>
-                  </div>
+                  <p className="whitespace-pre-wrap px-3 py-2 text-sm">
+                    {!revealMessage
+                      ? "Write a message"
+                      : showCard
+                        ? bodyText
+                        : renderMessage(revealMessage, hasLink)}
+                  </p>
                 )}
                 {showCard && (
-                  <div className="rounded-2xl bg-zinc-700 px-4 py-3 text-center text-sm font-medium text-white">
+                  <div className="mx-1.5 mb-1.5 rounded-xl bg-zinc-700 px-4 py-2.5 text-center text-sm font-medium text-white">
                     {linkButtonLabel || "Open link"}
                   </div>
                 )}
