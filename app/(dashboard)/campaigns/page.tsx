@@ -63,7 +63,10 @@ export default function CampaignsPage() {
       if (selectedAccountId !== "all") {
         params.set("instagramAccountId", selectedAccountId);
       }
-      const res = await fetch(`/api/automations${params.size ? `?${params}` : ""}`);
+      const res = await fetch(
+        `/api/automations${params.size ? `?${params}` : ""}`,
+        { cache: "no-store" }
+      );
       const data = await res.json();
       if (data.success) setAutomations(data.data);
     } catch (err) {

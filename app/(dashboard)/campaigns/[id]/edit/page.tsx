@@ -24,6 +24,7 @@ interface Campaign {
   publicReplyEnabled: boolean;
   publicReplyMessage: string | null;
   instagramAccount: { username: string };
+  trackedLinks?: { destinationUrl: string }[];
 }
 
 const GOALS = [
@@ -56,9 +57,10 @@ export default function EditCampaignPage() {
   const [username, setUsername] = useState("");
   const [postUrl, setPostUrl] = useState<string | null>(null);
   const [pendingNextReel, setPendingNextReel] = useState(false);
+  const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
 
   useEffect(() => {
-    fetch("/api/automations")
+    fetch("/api/automations", { cache: "no-store" })
       .then((res) => res.json())
       .then((payload) => {
         if (!payload.success) {
@@ -81,6 +83,7 @@ export default function EditCampaignPage() {
         setUsername(found.instagramAccount.username);
         setPostUrl(found.postUrl);
         setPendingNextReel(found.pendingNextReel);
+        setTrackedDestinationUrl(found.trackedLinks?.[0]?.destinationUrl ?? "");
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -109,6 +112,7 @@ export default function EditCampaignPage() {
           isActive,
           publicReplyEnabled,
           publicReplyMessage: publicReplyEnabled ? publicReplyMessage : null,
+          trackedDestinationUrl: trackedDestinationUrl.trim(),
         }),
       });
       const data = await res.json();
@@ -238,6 +242,27 @@ export default function EditCampaignPage() {
               {"{username}"}
             </code>{" "}
             to personalize with the commenter&apos;s name.
+          </p>
+        </div>
+
+        {/* Tracked Destination URL */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-foreground">
+            Tracked Destination URL
+          </label>
+          <input
+            type="url"
+            value={trackedDestinationUrl}
+            onChange={(e) => setTrackedDestinationUrl(e.target.value)}
+            placeholder="https://yourlink.com/offer"
+            className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+          />
+          <p className="text-xs text-muted">
+            Where{" "}
+            <code className="px-1 py-0.5 rounded bg-surface-hover text-accent font-mono text-[11px]">
+              {"{link}"}
+            </code>{" "}
+            in the reply points. Leave empty to remove the tracked link.
           </p>
         </div>
 

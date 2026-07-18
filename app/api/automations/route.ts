@@ -11,6 +11,10 @@ import {
   getCurrentWorkspaceContext,
 } from "@/lib/workspace-access";
 
+// This list is read-your-writes (created/imported campaigns must show up
+// immediately), so never cache it at the route or CDN layer.
+export const dynamic = "force-dynamic";
+
 const createAutomationSchema = z
   .object({
     name: z.string().min(1).max(100),
@@ -43,6 +47,12 @@ const updateAutomationSchema = z.object({
   isActive: z.boolean().optional(),
   wholeWordMatch: z.boolean().optional(),
   reportShareEnabled: z.boolean().optional(),
+  // Empty string clears the tracked link; a URL updates/creates it; undefined
+  // leaves it unchanged.
+  trackedDestinationUrl: z
+    .union([z.string().url(), z.literal("")])
+    .optional()
+    .nullable(),
 });
 
 export async function GET(request: NextRequest) {
@@ -167,7 +177,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({
+  return NextResponse.json(
+    {
     success: true,
     data: automationsWithReports.map((automation) => {
       const item = analytics.get(automation.id) ?? {
@@ -193,7 +204,9 @@ export async function GET(request: NextRequest) {
         },
       };
     }),
-  });
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -360,10 +373,42 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  const { trackedDestinationUrl, ...automationData } = parsed.data;
+
   const updated = await prisma.automation.update({
     where: { id: automationId },
-    data: parsed.data,
+    data: automationData,
   });
+
+  // Update, create, or clear the campaign's primary tracked link when a
+  // destination URL was supplied. `undefined` means "leave it alone".
+  if (trackedDestinationUrl !== undefined && trackedDestinationUrl !== null) {
+    const primaryLink = await prisma.trackedLink.findFirst({
+      where: { automationId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (trackedDestinationUrl === "") {
+      if (primaryLink) {
+        await prisma.trackedLink.delete({ where: { id: primaryLink.id } });
+      }
+    } else if (primaryLink) {
+      await prisma.trackedLink.update({
+        where: { id: primaryLink.id },
+        data: { destinationUrl: trackedDestinationUrl },
+      });
+    } else {
+      await prisma.trackedLink.create({
+        data: {
+          workspaceId,
+          automationId,
+          slug: generateTrackedLinkSlug(),
+          label: "Primary campaign link",
+          destinationUrl: trackedDestinationUrl,
+        },
+      });
+    }
+  }
 
   return NextResponse.json({ success: true, data: updated });
 }
