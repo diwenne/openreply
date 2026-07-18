@@ -37,7 +37,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
   const automations = await prisma.automation.findMany({
     where: {
-      postId: mediaId,
+      // Match campaigns bound to this specific post, plus any-post campaigns.
+      OR: [{ postId: mediaId }, { matchAnyPost: true }],
       isActive: true,
       instagramAccount: {
         instagramId: instagramAccountId,
@@ -58,11 +59,14 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
   });
 
   for (const automation of automations) {
-    const matchResult = matchKeywords(
-      commentText,
-      automation.keywords,
-      automation.wholeWordMatch
-    );
+    // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
+    const matchResult = automation.matchAnyWord
+      ? { matched: true, matchedKeyword: null }
+      : matchKeywords(
+          commentText,
+          automation.keywords,
+          automation.wholeWordMatch
+        );
 
     if (!matchResult.matched) {
       continue;

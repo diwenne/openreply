@@ -154,8 +154,13 @@ model Automation {
   postId         String?
   postUrl        String?
   pendingNextReel Boolean @default(false)
+  matchAnyPost   Boolean @default(false)
   keywords       String[]
+  matchAnyWord   Boolean @default(false)
   dmMessage      String
+  openingDmEnabled     Boolean @default(false)
+  openingDmMessage     String?
+  openingDmButtonLabel String?
   publicReplyEnabled Boolean @default(false)
   publicReplyMessage String?
   isActive       Boolean @default(true)

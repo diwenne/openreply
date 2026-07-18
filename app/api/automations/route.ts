@@ -23,25 +23,51 @@ const createAutomationSchema = z
     postId: z.string().min(1).optional().nullable(),
     postUrl: z.string().url().optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
-    keywords: z.array(z.string().min(1).max(50)).min(1).max(10),
+    matchAnyPost: z.boolean().optional().default(false),
+    keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
+    matchAnyWord: z.boolean().optional().default(false),
     dmMessage: z.string().min(1).max(1000),
+    openingDmEnabled: z.boolean().optional().default(false),
+    openingDmMessage: z.string().max(1000).optional().nullable(),
+    openingDmButtonLabel: z.string().max(64).optional().nullable(),
     publicReplyEnabled: z.boolean().optional().default(false),
     publicReplyMessage: z.string().max(1000).optional().nullable(),
     trackedDestinationUrl: z.string().url().optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
-  // A campaign must target either a specific post or the next posted reel.
-  .refine((data) => data.pendingNextReel || Boolean(data.postId), {
-    message: "Select a post or choose to attach to your next reel",
-    path: ["postId"],
-  });
+  // A campaign must target a specific post, any post, or the next reel.
+  .refine(
+    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
+  )
+  // And it must match either specific words or any word.
+  .refine((d) => d.matchAnyWord || d.keywords.length >= 1, {
+    message: "Add at least one keyword, or match any word",
+    path: ["keywords"],
+  })
+  // An opening DM needs both a message and a button label.
+  .refine(
+    (d) =>
+      !d.openingDmEnabled ||
+      (Boolean(d.openingDmMessage?.trim()) &&
+        Boolean(d.openingDmButtonLabel?.trim())),
+    { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
+  );
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
-  keywords: z.array(z.string().min(1).max(50)).min(1).max(10).optional(),
+  postId: z.string().min(1).optional().nullable(),
+  postUrl: z.string().url().optional().nullable(),
+  pendingNextReel: z.boolean().optional(),
+  matchAnyPost: z.boolean().optional(),
+  keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
+  matchAnyWord: z.boolean().optional(),
   dmMessage: z.string().min(1).max(1000).optional(),
+  openingDmEnabled: z.boolean().optional(),
+  openingDmMessage: z.string().max(1000).optional().nullable(),
+  openingDmButtonLabel: z.string().max(64).optional().nullable(),
   publicReplyEnabled: z.boolean().optional(),
   publicReplyMessage: z.string().max(1000).optional().nullable(),
   isActive: z.boolean().optional(),
@@ -277,18 +303,30 @@ export async function POST(request: NextRequest) {
 
   const { trackedDestinationUrl } = parsed.data;
 
-  const pendingNextReel = parsed.data.pendingNextReel;
+  const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
+    parsed.data;
+  // A post is only stored for the "specific post" trigger.
+  const isSpecificPost = !pendingNextReel && !matchAnyPost;
 
   const automation = await prisma.automation.create({
     data: {
       name: parsed.data.name,
       goal: parsed.data.goal,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
-      postId: pendingNextReel ? null : parsed.data.postId,
-      postUrl: pendingNextReel ? null : parsed.data.postUrl,
+      postId: isSpecificPost ? parsed.data.postId : null,
+      postUrl: isSpecificPost ? parsed.data.postUrl : null,
       pendingNextReel,
-      keywords: parsed.data.keywords,
+      matchAnyPost,
+      keywords: matchAnyWord ? [] : parsed.data.keywords,
+      matchAnyWord,
       dmMessage: parsed.data.dmMessage,
+      openingDmEnabled,
+      openingDmMessage: openingDmEnabled
+        ? parsed.data.openingDmMessage || null
+        : null,
+      openingDmButtonLabel: openingDmEnabled
+        ? parsed.data.openingDmButtonLabel || null
+        : null,
       publicReplyEnabled: parsed.data.publicReplyEnabled,
       publicReplyMessage: parsed.data.publicReplyEnabled
         ? parsed.data.publicReplyMessage || null
@@ -374,6 +412,19 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { trackedDestinationUrl, ...automationData } = parsed.data;
+
+  // Keep dependent fields consistent: any-word clears keywords; a disabled
+  // opening DM clears its message and button.
+  if (automationData.matchAnyWord === true) automationData.keywords = [];
+  if (automationData.openingDmEnabled === false) {
+    automationData.openingDmMessage = null;
+    automationData.openingDmButtonLabel = null;
+  }
+  // Any-post / next-reel campaigns carry no specific post.
+  if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
+    automationData.postId = null;
+    automationData.postUrl = null;
+  }
 
   const updated = await prisma.automation.update({
     where: { id: automationId },
