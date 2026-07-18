@@ -1,6 +1,6 @@
 # Self-hosting
 
-This covers the environment variables and the production layout. For the Meta side, read [instagram-setup.md](instagram-setup.md), which is the harder half.
+This covers the environment and the production layout. For the Meta side, read [instagram-setup.md](instagram-setup.md), which is the harder half.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Copy `.env.example` to `.env` and fill these in.
 | `FACEBOOK_APP_SECRET` | From the Meta app. |
 | `WEBHOOK_VERIFY_TOKEN` | Any random string. You paste the same value into Meta's webhook config. |
 
-The `ENCRYPTION_KEY` has to be exactly 64 hex characters or the app throws on boot.
+`ENCRYPTION_KEY` must be exactly 64 hex characters or the app throws on boot.
 
 ## Local development
 
@@ -45,7 +45,7 @@ npm run db:generate
 npm run db:migrate
 ```
 
-If you would rather install them natively, on macOS:
+Or install them natively (macOS):
 
 ```bash
 brew install postgresql@16 redis
@@ -71,26 +71,54 @@ ngrok http 3000
 
 ## Production
 
-### Web app on Vercel
+The setup below uses Railway for Postgres, Redis, and the worker, and Vercel for the web app. Do Railway first, because Vercel needs the database URLs.
 
-1. Create a Vercel project from your repo.
-2. Add every environment variable listed above. `NEXTAUTH_URL` is your Vercel domain. `DATABASE_URL` and `REDIS_URL` point at your managed Postgres and Redis, not localhost.
-3. Deploy. The build runs `prisma generate` before `next build`, so the Prisma client is generated fresh even though it is gitignored.
-4. The daily token-refresh cron is wired up in `vercel.json`.
+### Step 1: Railway (Postgres, Redis, worker)
 
-Use the public connection URLs for your database and Redis, not internal hostnames. Vercel runs outside your database provider's private network, so an internal hostname like `something.railway.internal` will hang and time out.
+1. Create a Railway account and a **New Project**.
+2. In the project, click **New**, then **Database**, then **Add PostgreSQL**.
+3. Click **New**, then **Database**, then **Add Redis**.
+4. Add the worker: click **New**, then **GitHub Repo**, and select your fork of this repo. Railway detects the Node app.
+5. Open the new service's **Settings** and set the **Start Command** to:
+   ```
+   npm run worker
+   ```
+6. Open the worker service's **Variables** and add all the environment variables from the table above. For the worker, use Railway's **internal** database and Redis hostnames (they look like `postgres.railway.internal` and `redis.railway.internal`); inside Railway's network they are faster and free of egress. `NEXTAUTH_URL` is your Vercel domain. `ENCRYPTION_KEY` must be the exact same value you will use on Vercel.
 
-### Worker on Railway
+**Getting the connection URLs.** Open the Postgres service, then its **Variables** or **Connect** tab. You will see two URLs:
 
-1. Create a service from the same repo.
-2. Start command: `npm run worker`.
-3. Give it the same variables as the web app. Inside the same provider network it can use internal hostnames, which are faster and avoid egress cost.
+| Variable | Host | Use it for |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgres.railway.internal` | the Railway worker only |
+| `DATABASE_PUBLIC_URL` | `*.proxy.rlwy.net` | Vercel, and running migrations from your machine |
 
-Run the migration against your production database once before taking traffic:
+Redis is the same: `REDIS_URL` (internal) for the worker, `REDIS_PUBLIC_URL` (public proxy) for Vercel.
+
+Vercel runs outside Railway's private network, so if you give Vercel an internal `*.railway.internal` URL it will hang and time out. Always give Vercel the **public** URLs.
+
+### Step 2: Migrate the production database
+
+Run once from your machine, using the public Postgres URL:
 
 ```bash
-DATABASE_URL="your-production-url" npm run db:migrate
+DATABASE_URL="postgresql://...proxy.rlwy.net.../railway" npm run db:migrate
 ```
+
+### Step 3: Vercel (web app)
+
+1. Create a Vercel account and **Add New Project**, importing your fork. It auto-detects Next.js.
+2. Under the project's **Settings**, then **Environment Variables**, add every variable from the table above. Use these values:
+   - `NEXTAUTH_URL`: your Vercel domain (for example `https://your-app.vercel.app`).
+   - `DATABASE_URL` and `REDIS_URL`: the **public** Railway URLs (`DATABASE_PUBLIC_URL` and `REDIS_PUBLIC_URL` from Railway).
+   - `ENCRYPTION_KEY`: the exact same value as on the worker.
+3. Deploy. The build runs `prisma generate` before `next build`, so the Prisma client is generated even though it is gitignored.
+4. The daily token-refresh cron is wired up in `vercel.json`.
+
+Note on crons: Vercel's free plan allows each cron to run at most once per day. The repo's crons are set to daily for that reason. If you want a more frequent schedule you need the Pro plan.
+
+### Step 4: Point Meta at the Vercel domain
+
+In the Meta app, set the OAuth redirect URI and the webhook callback URL to your Vercel domain (see [instagram-setup.md](instagram-setup.md)). If you later add a custom domain and make it primary, update `NEXTAUTH_URL` and the Meta webhook callback to the new domain, and update the worker's `NEXTAUTH_URL` too, or tracked links in DMs will point at the old domain.
 
 ## Checking it is healthy
 
