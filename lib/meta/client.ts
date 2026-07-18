@@ -153,6 +153,78 @@ export async function sendPrivateReply(
   return handleResponse(response);
 }
 
+/**
+ * Send a private reply to a comment as a button template — an opening message
+ * plus a postback button. Tapping the button opens the conversation and fires
+ * a `messaging_postbacks` webhook carrying `payload`, which we use to deliver
+ * the follow-up ("reveal") message.
+ */
+export async function sendPrivateReplyWithButton(
+  accessToken: string,
+  instagramAccountId: string,
+  commentId: string,
+  text: string,
+  buttonTitle: string,
+  payload: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { comment_id: commentId },
+        message: {
+          attachment: {
+            type: "template",
+            payload: {
+              template_type: "button",
+              // Button template text is capped at 640 chars by Meta.
+              text: text.slice(0, 640),
+              buttons: [
+                { type: "postback", title: buttonTitle.slice(0, 20), payload },
+              ],
+            },
+          },
+        },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/**
+ * Send a plain-text direct message to a user by their Instagram-scoped ID.
+ * Used to deliver the reveal message after a button postback.
+ */
+export async function sendDirectMessage(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  message: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: userId },
+        message: { text: message },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
 export async function sendCommentReply(
   accessToken: string,
   commentId: string,

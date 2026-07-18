@@ -1,7 +1,20 @@
 import { Worker, type Job } from "bullmq";
-import { getDMQueue, getRedisConnection, type ProcessCommentJob } from "./client";
+import {
+  getDMQueue,
+  getRedisConnection,
+  POSTBACK_JOB_NAME,
+  type DmQueueJob,
+  type ProcessCommentJob,
+  type ProcessPostbackJob,
+} from "./client";
 import { prisma } from "@/lib/db/client";
-import { MetaApiError, sendCommentReply, sendPrivateReply } from "@/lib/meta/client";
+import {
+  MetaApiError,
+  sendCommentReply,
+  sendDirectMessage,
+  sendPrivateReply,
+  sendPrivateReplyWithButton,
+} from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { reserveDMSlot } from "@/lib/utils/rate-limiter";
@@ -271,19 +284,42 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       }
     }
 
-    const dmMessage = renderMessageWithTracking({
-      message: automation.dmMessage,
-      commenterName,
-      trackedLinks: automation.trackedLinks,
-    });
+    // With an opening DM, the private reply is a button message; tapping it
+    // fires a postback that delivers the reveal (see processPostback). Without
+    // one, we send the reveal text directly as today.
+    const useOpeningDm =
+      automation.openingDmEnabled &&
+      Boolean(automation.openingDmMessage) &&
+      Boolean(automation.openingDmButtonLabel);
 
     try {
-      await sendPrivateReply(
-        accessToken,
-        automation.instagramAccount.instagramId,
-        commentId,
-        dmMessage
-      );
+      if (useOpeningDm) {
+        const openingText = renderMessageWithTracking({
+          message: automation.openingDmMessage as string,
+          commenterName,
+          trackedLinks: [],
+        });
+        await sendPrivateReplyWithButton(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          commentId,
+          openingText,
+          automation.openingDmButtonLabel as string,
+          `reveal:${automation.id}`
+        );
+      } else {
+        const dmMessage = renderMessageWithTracking({
+          message: automation.dmMessage,
+          commenterName,
+          trackedLinks: automation.trackedLinks,
+        });
+        await sendPrivateReply(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          commentId,
+          dmMessage
+        );
+      }
 
       await prisma.dmLog.update({
         where: {
@@ -340,12 +376,150 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
   }
 }
 
+/**
+ * Deliver the reveal message after a user taps an opening DM's button.
+ * The postback payload is `reveal:<automationId>`; the sender is the user's
+ * IGSID (same id as their comment author id), which we DM directly.
+ */
+async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
+  const { instagramAccountId, userId, payload } = job.data;
+
+  if (!payload.startsWith("reveal:")) return;
+  const automationId = payload.slice("reveal:".length);
+
+  const automation = await prisma.automation.findFirst({
+    where: { id: automationId, isActive: true },
+    include: {
+      instagramAccount: true,
+      workspace: true,
+      trackedLinks: {
+        select: { slug: true, destinationUrl: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (
+    !automation ||
+    automation.instagramAccount.instagramId !== instagramAccountId ||
+    !automation.instagramAccount.accessToken
+  ) {
+    return;
+  }
+
+  // One reveal per user per automation.
+  const dedupeId = `reveal:${userId}`;
+  const existing = await prisma.dmLog.findUnique({
+    where: {
+      automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+    },
+  });
+  if (existing?.status === "SENT") return;
+
+  // Personalize {username} from the opening DM log for this user, if present.
+  const openingLog = await prisma.dmLog.findFirst({
+    where: { automationId: automation.id, commenterId: userId },
+    select: { commenterName: true },
+  });
+  const commenterName = openingLog?.commenterName ?? null;
+
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(automation.instagramAccount.accessToken);
+  } catch {
+    return;
+  }
+
+  const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+  if (!usage.allowed) {
+    await prisma.dmLog.upsert({
+      where: {
+        automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+      },
+      create: {
+        workspaceId: automation.workspaceId,
+        automationId: automation.id,
+        instagramAccountId: automation.instagramAccountId,
+        commenterId: userId,
+        commenterName,
+        commentText: "(button tap)",
+        commentId: dedupeId,
+        status: "SKIPPED_PLAN_LIMIT",
+        errorMessage: `Monthly DM limit reached (${usage.limit})`,
+      },
+      update: { status: "SKIPPED_PLAN_LIMIT" },
+    });
+    return;
+  }
+
+  const revealMessage = renderMessageWithTracking({
+    message: automation.dmMessage,
+    commenterName,
+    trackedLinks: automation.trackedLinks,
+  });
+
+  try {
+    await sendDirectMessage(
+      accessToken,
+      automation.instagramAccount.instagramId,
+      userId,
+      revealMessage
+    );
+    await prisma.dmLog.upsert({
+      where: {
+        automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+      },
+      create: {
+        workspaceId: automation.workspaceId,
+        automationId: automation.id,
+        instagramAccountId: automation.instagramAccountId,
+        commenterId: userId,
+        commenterName,
+        commentText: "(button tap)",
+        commentId: dedupeId,
+        status: "SENT",
+        dmSentAt: new Date(),
+      },
+      update: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
+    });
+  } catch (error) {
+    await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+    await prisma.dmLog.upsert({
+      where: {
+        automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+      },
+      create: {
+        workspaceId: automation.workspaceId,
+        automationId: automation.id,
+        instagramAccountId: automation.instagramAccountId,
+        commenterId: userId,
+        commenterName,
+        commentText: "(button tap)",
+        commentId: dedupeId,
+        status: "FAILED",
+        errorMessage: formatError(error),
+      },
+      update: { status: "FAILED", errorMessage: formatError(error) },
+    });
+    throw error;
+  }
+}
+
+async function processJob(job: Job<DmQueueJob>): Promise<void> {
+  if (job.name === POSTBACK_JOB_NAME) {
+    return processPostback(job as Job<ProcessPostbackJob>);
+  }
+  return processComment(job as Job<ProcessCommentJob>);
+}
+
 async function recordWorkerFailure(
-  job: Job<ProcessCommentJob> | undefined,
+  job: Job<DmQueueJob> | undefined,
   error: Error
 ) {
   try {
     const instagramAccountId = job?.data.instagramAccountId;
+    const commentId =
+      job && "commentId" in job.data ? job.data.commentId : null;
     const account = instagramAccountId
       ? await prisma.instagramAccount.findUnique({
           where: { instagramId: instagramAccountId },
@@ -363,7 +537,7 @@ async function recordWorkerFailure(
           jobId: job?.id ?? null,
           attemptsMade: job?.attemptsMade ?? null,
           instagramAccountId: instagramAccountId ?? null,
-          commentId: job?.data.commentId ?? null,
+          commentId,
         },
       },
     });
@@ -373,7 +547,7 @@ async function recordWorkerFailure(
       message: error.message,
       jobId: job?.id,
       instagramAccountId,
-      commentId: job?.data.commentId,
+      commentId: commentId ?? undefined,
     });
   } catch (recordError) {
     console.error(
@@ -383,10 +557,10 @@ async function recordWorkerFailure(
   }
 }
 
-export function createDMWorker(): Worker<ProcessCommentJob> {
-  const worker = new Worker<ProcessCommentJob>(
+export function createDMWorker(): Worker<DmQueueJob> {
+  const worker = new Worker<DmQueueJob>(
     "dm-processing",
-    processComment,
+    processJob,
     {
       connection: getRedisConnection(),
       concurrency: 5,

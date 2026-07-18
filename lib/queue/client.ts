@@ -30,11 +30,23 @@ export interface ProcessCommentJob {
   requeueAttempt?: number;
 }
 
-let dmQueue: Queue<ProcessCommentJob> | null = null;
+// Delivered when a user taps an opening DM's button — carries the reveal target.
+export interface ProcessPostbackJob {
+  instagramAccountId: string;
+  userId: string;
+  payload: string;
+  mid?: string;
+}
 
-export function getDMQueue(): Queue<ProcessCommentJob> {
+export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob;
+
+export const POSTBACK_JOB_NAME = "process-postback";
+
+let dmQueue: Queue<DmQueueJob> | null = null;
+
+export function getDMQueue(): Queue<DmQueueJob> {
   if (!dmQueue) {
-    dmQueue = new Queue<ProcessCommentJob>("dm-processing", {
+    dmQueue = new Queue<DmQueueJob>("dm-processing", {
       connection: getRedisConnection(),
       defaultJobOptions: {
         removeOnComplete: { count: 1000 }, // Keep last 1000 completed jobs

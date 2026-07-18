@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { getDMQueue } from "@/lib/queue/client";
-import { parseCommentEvents, verifyWebhookSignature } from "@/lib/meta/webhook";
+import {
+  parseCommentEvents,
+  parsePostbackEvents,
+  verifyWebhookSignature,
+} from "@/lib/meta/webhook";
+import { POSTBACK_JOB_NAME } from "@/lib/queue/client";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -102,6 +107,28 @@ export async function POST(request: NextRequest) {
           data: { workspaceId: account.workspaceId },
         });
       }
+    }
+
+    // Button taps from opening DMs → deliver the reveal message.
+    const postbackEvents = parsePostbackEvents(
+      payload as Parameters<typeof parsePostbackEvents>[0]
+    );
+
+    for (const event of postbackEvents) {
+      await queue.add(
+        POSTBACK_JOB_NAME,
+        {
+          instagramAccountId: event.instagramAccountId,
+          userId: event.userId,
+          payload: event.payload,
+          mid: event.mid,
+        },
+        {
+          jobId: `postback:${event.instagramAccountId}:${event.userId}:${
+            event.mid ?? event.payload
+          }`,
+        }
+      );
     }
 
     await prisma.webhookEvent.update({

@@ -60,6 +60,18 @@ interface WebhookEntry {
       media_id?: string;
     };
   }>;
+  messaging?: Array<{
+    sender?: { id?: string };
+    recipient?: { id?: string };
+    postback?: { mid?: string; title?: string; payload?: string };
+  }>;
+}
+
+export interface WebhookPostbackEvent {
+  instagramAccountId: string;
+  userId: string;
+  payload: string;
+  mid?: string;
 }
 
 interface WebhookPayload {
@@ -101,6 +113,39 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
         commenterId,
         commenterName: value.from?.username,
         mediaId,
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Parse button-tap postbacks (from an opening DM's button) out of a webhook
+ * payload. Each event carries the tapping user's IGSID and our postback payload.
+ */
+export function parsePostbackEvents(
+  payload: WebhookPayload
+): WebhookPostbackEvent[] {
+  const events: WebhookPostbackEvent[] = [];
+
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const postbackPayload = messaging.postback?.payload;
+      const userId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+
+      if (!postbackPayload || !userId || !accountId) continue;
+      // Ignore echoes of the account's own actions.
+      if (userId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        userId,
+        payload: postbackPayload,
+        mid: messaging.postback?.mid,
       });
     }
   }
