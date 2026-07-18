@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
+import { readCache, writeCache } from "@/lib/client-cache";
 
 interface Campaign {
   id: string;
@@ -104,12 +105,19 @@ export default function CampaignsPage() {
   }, [fetchAutomations]);
 
   // Fetch fresh post thumbnails for the accounts in view and map them by postId.
+  // Cache-first so the thumbnails show instantly on a return visit.
   useEffect(() => {
     if (automations.length === 0) return;
     let cancelled = false;
     const accountIds = Array.from(
       new Set(automations.map((a) => a.instagramAccountId))
-    );
+    ).sort();
+    const cacheKey = `ig-thumbs:${accountIds.join(",")}`;
+
+    const cached = readCache<Record<string, string>>(cacheKey, 15 * 60 * 1000);
+    // Hydrating state from cache is a legitimate effect use here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (cached.data) setThumbnails(cached.data);
 
     Promise.all(
       accountIds.map((accountId) =>
@@ -130,6 +138,7 @@ export default function CampaignsPage() {
         }
       }
       setThumbnails(map);
+      writeCache(cacheKey, map);
     });
 
     return () => {

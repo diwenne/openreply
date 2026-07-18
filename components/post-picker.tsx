@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { readCache, writeCache } from "@/lib/client-cache";
 
 interface InstagramPost {
   id: string;
@@ -52,32 +53,37 @@ export default function PostPicker({
     // most recent page.
     params.set("all", "true");
 
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      setError(null);
-      setPosts([]);
+    // Show the cached library instantly (stale-while-revalidate), then refresh.
+    const cacheKey = `ig-posts:${instagramAccountId ?? "default"}`;
+    const cached = readCache<InstagramPost[]>(cacheKey, 15 * 60 * 1000);
+    // Hydrating state from cache is a legitimate effect use here.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (cached.data) {
+      setPosts(cached.data);
+      setLoading(false);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
-      fetch(`/api/instagram/posts${params.size ? `?${params}` : ""}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (cancelled) return;
-          if (data.success) {
-            setPosts(data.data);
-          } else {
-            setError(data.error ?? "Failed to load posts");
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setError("Failed to load posts");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, 0);
+    fetch(`/api/instagram/posts${params.size ? `?${params}` : ""}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.success) {
+          setPosts(data.data);
+          writeCache(cacheKey, data.data);
+        } else if (!cached.data) {
+          setError(data.error ?? "Failed to load posts");
+        }
+      })
+      .catch(() => {
+        if (!cancelled && !cached.data) setError("Failed to load posts");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
   }, [instagramAccountId]);
 
