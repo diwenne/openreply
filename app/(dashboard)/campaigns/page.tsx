@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 
 interface Campaign {
@@ -57,6 +58,7 @@ interface Campaign {
 }
 
 export default function CampaignsPage() {
+  const router = useRouter();
   const [automations, setAutomations] = useState<Campaign[]>([]);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
@@ -280,13 +282,18 @@ export default function CampaignsPage() {
       {/* Campaign cards */}
       <div className="space-y-4">
         {automations.map((auto) => (
-          <div key={auto.id} className="panel rounded p-6 hover:border-border-hover transition-all">
+          <div
+            key={auto.id}
+            onClick={() => router.push(`/campaigns/${auto.id}`)}
+            className="panel rounded p-6 hover:border-border-hover transition-all cursor-pointer"
+          >
             <div className="flex items-start justify-between gap-4">
               {auto.postId && thumbnails[auto.postId] && (
                 <a
                   href={auto.postUrl ?? "#"}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="shrink-0"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -377,6 +384,7 @@ export default function CampaignsPage() {
                         href={auto.trackedLinks[0].trackedUrl}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-foreground"
                       >
                         Open
@@ -386,7 +394,10 @@ export default function CampaignsPage() {
                 )}
 
                 {auto.reportUrl && (
-                  <div className="mt-4 rounded border border-border bg-surface/70 p-3">
+                  <div
+                    className="mt-4 rounded border border-border bg-surface/70 p-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
@@ -447,7 +458,10 @@ export default function CampaignsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Toggle */}
                 <button
                   onClick={() => toggleActive(auto.id, auto.isActive)}
@@ -463,14 +477,6 @@ export default function CampaignsPage() {
                     `}
                   />
                 </button>
-
-                {/* Edit */}
-                <Link
-                  href={`/campaigns/${auto.id}/edit`}
-                  className="px-2 py-1 rounded text-sm text-muted hover:text-foreground"
-                >
-                  Edit
-                </Link>
 
                 {/* Kebab menu */}
                 <div className="relative">

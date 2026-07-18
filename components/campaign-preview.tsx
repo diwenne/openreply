@@ -320,9 +320,11 @@ function DmScreen({
           <>
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
-              <div className="max-w-[78%] rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
-                <p className="whitespace-pre-wrap text-sm">{openingDmMessage || "Your opening message…"}</p>
-                <div className="mt-2 rounded-lg bg-zinc-700 py-2 text-center text-sm font-medium">
+              <div className="flex max-w-[80%] flex-col gap-1">
+                <div className="rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
+                  <p className="whitespace-pre-wrap text-sm">{openingDmMessage || "Your opening message…"}</p>
+                </div>
+                <div className="rounded-2xl bg-zinc-700 px-4 py-3 text-center text-sm font-medium text-white">
                   {openingDmButtonLabel || "Button label"}
                 </div>
               </div>
@@ -344,30 +346,22 @@ function DmScreen({
           return (
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
-              <div className="max-w-[80%] overflow-hidden rounded-2xl rounded-bl-md bg-zinc-800">
+              <div className="flex max-w-[80%] flex-col gap-1">
                 {(!showCard || bodyText) && (
-                  <p className="whitespace-pre-wrap px-3 py-2 text-sm">
-                    {!revealMessage
-                      ? "Write a message"
-                      : showCard
-                        ? bodyText
-                        : renderMessage(revealMessage, hasLink)}
-                  </p>
+                  <div className="rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
+                    <p className="whitespace-pre-wrap text-sm">
+                      {!revealMessage
+                        ? "Write a message"
+                        : showCard
+                          ? bodyText
+                          : renderMessage(revealMessage, hasLink)}
+                    </p>
+                  </div>
                 )}
                 {showCard && (
-                  <a className="flex items-center gap-2 border-t border-white/10 bg-zinc-700/60 px-3 py-2.5">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-zinc-600 text-white">
-                      {Ico.link("h-4 w-4")}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-sky-300">
-                        {linkButtonLabel || "Open link"}
-                      </span>
-                      <span className="block truncate text-[10px] text-zinc-400">
-                        yourlink.com/offer
-                      </span>
-                    </span>
-                  </a>
+                  <div className="rounded-2xl bg-zinc-700 px-4 py-3 text-center text-sm font-medium text-white">
+                    {linkButtonLabel || "Open link"}
+                  </div>
                 )}
               </div>
             </div>
