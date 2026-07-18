@@ -314,20 +314,42 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           `reveal:${automation.id}`
         );
       } else if (automation.trackedLinks[0]) {
-        // Deliver the link as a tappable button rather than an inline URL.
+        // Try button template first; if Meta rejects it, fall back to inline link.
         const bodyText =
           renderMessageWithoutLink({
             message: automation.dmMessage,
             commenterName,
           }) || "Here's your link:";
-        await sendPrivateReplyWithLinkButton(
-          accessToken,
-          automation.instagramAccount.instagramId,
-          commentId,
-          bodyText,
-          automation.linkButtonLabel || "Open link",
-          buildTrackedUrl(automation.trackedLinks[0].slug)
-        );
+        const trackedUrl = buildTrackedUrl(automation.trackedLinks[0].slug);
+
+        try {
+          await sendPrivateReplyWithLinkButton(
+            accessToken,
+            automation.instagramAccount.instagramId,
+            commentId,
+            bodyText,
+            automation.linkButtonLabel || "Open link",
+            trackedUrl
+          );
+        } catch (buttonError) {
+          // Button template rejected; send as text with inline link instead.
+          console.log(
+            "[DM Worker] Button template rejected, falling back to inline link:",
+            formatError(buttonError)
+          );
+          const fallbackMessage =
+            renderMessageWithTracking({
+              message: automation.dmMessage,
+              commenterName,
+              trackedLinks: [automation.trackedLinks[0]],
+            }) || `${bodyText}\n${trackedUrl}`;
+          await sendPrivateReply(
+            accessToken,
+            automation.instagramAccount.instagramId,
+            commentId,
+            fallbackMessage
+          );
+        }
       } else {
         const dmMessage = renderMessageWithTracking({
           message: automation.dmMessage,
@@ -486,20 +508,42 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   try {
     if (primaryLink) {
-      // Deliver the link as a tappable button instead of an inline URL.
+      // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =
         renderMessageWithoutLink({
           message: automation.dmMessage,
           commenterName,
         }) || "Here's your link:";
-      await sendDirectMessageWithLinkButton(
-        accessToken,
-        automation.instagramAccount.instagramId,
-        userId,
-        bodyText,
-        automation.linkButtonLabel || "Open link",
-        buildTrackedUrl(primaryLink.slug)
-      );
+      const trackedUrl = buildTrackedUrl(primaryLink.slug);
+
+      try {
+        await sendDirectMessageWithLinkButton(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          userId,
+          bodyText,
+          automation.linkButtonLabel || "Open link",
+          trackedUrl
+        );
+      } catch (buttonError) {
+        // Button template rejected; send as text with inline link instead.
+        console.log(
+          "[DM Worker] Button template rejected in postback, falling back to inline link:",
+          formatError(buttonError)
+        );
+        const fallbackMessage =
+          renderMessageWithTracking({
+            message: automation.dmMessage,
+            commenterName,
+            trackedLinks: [primaryLink],
+          }) || `${bodyText}\n${trackedUrl}`;
+        await sendDirectMessage(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          userId,
+          fallbackMessage
+        );
+      }
     } else {
       const revealMessage = renderMessageWithTracking({
         message: automation.dmMessage,
@@ -652,3 +696,4 @@ export function createDMWorker(): Worker<DmQueueJob> {
 
   return worker;
 }
+
