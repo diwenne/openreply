@@ -462,6 +462,34 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     }
   }
 
+  // Skip the current imported row without saving a campaign for it, advancing
+  // to the next one (or finishing the import if it was the last).
+  function skipRow() {
+    if (!importQueue) return;
+    setError(null);
+    if (importQueue.length > 1) {
+      const remaining = importQueue.slice(1);
+      try {
+        window.localStorage.setItem(IMPORT_QUEUE_KEY, JSON.stringify(remaining));
+      } catch {
+        // ignore
+      }
+      setImportQueue(remaining);
+      prefillFromRow(remaining[0]);
+      if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+      return;
+    }
+    // Last row skipped — finish the import.
+    try {
+      window.localStorage.removeItem(IMPORT_QUEUE_KEY);
+      window.localStorage.removeItem(IMPORT_ACCOUNT_KEY);
+    } catch {
+      // ignore
+    }
+    router.push("/campaigns");
+    router.refresh();
+  }
+
   if (loading) {
     return <div className="panel h-64 rounded" />;
   }
@@ -489,7 +517,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           </span>{" "}
           <span className="text-muted">
             Fields are prefilled from your CSV. Pick the reel, edit anything, and
-            save to load the next one.
+            save to load the next one — or Skip if you don&rsquo;t want this one.
           </span>
         </div>
       )}
@@ -515,6 +543,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
         <div className="flex items-center gap-2">
+          {importQueue && (
+            <button
+              type="button"
+              onClick={skipRow}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground disabled:opacity-50"
+            >
+              {importQueue.length > 1 ? "Skip" : "Skip & finish"}
+            </button>
+          )}
           {mode === "edit" &&
             (isActive ? (
               <button
