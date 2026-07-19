@@ -403,6 +403,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             });
       const data = await res.json();
       if (data.success) {
+        // The post we just assigned is now in use. Reflect it immediately so
+        // the picker flags it on the next imported row — the fetch that builds
+        // this map doesn't re-run while the builder stays mounted through the
+        // import queue.
+        if (triggerScope === "specific" && postId) {
+          const assignedPostId = postId;
+          setUsedPosts((prev) => ({ ...prev, [assignedPostId]: payload.name }));
+        }
         // Importing: advance to the next queued row instead of leaving.
         if (importQueue && importQueue.length > 1) {
           const remaining = importQueue.slice(1);
