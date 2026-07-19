@@ -67,6 +67,13 @@ export default function CampaignsPage() {
   // postId -> current thumbnail URL, fetched live (Instagram URLs expire, so
   // they are never stored on the campaign).
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  // postId -> video URL for reels, so a campaign thumbnail can play on click.
+  const [videos, setVideos] = useState<Record<string, string>>({});
+  // The reel currently playing in the lightbox (null when closed).
+  const [playingVideo, setPlayingVideo] = useState<{
+    url: string;
+    postUrl: string | null;
+  } | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">(
@@ -108,47 +115,77 @@ export default function CampaignsPage() {
     return () => window.clearTimeout(timer);
   }, [fetchAutomations]);
 
-  // Fetch fresh post thumbnails for the accounts in view and map them by postId.
-  // Cache-first so the thumbnails show instantly on a return visit.
+  // Fetch fresh post thumbnails (and reel video URLs) for the accounts in view
+  // and map them by postId. Cache-first so they show instantly on a return
+  // visit. Instagram URLs expire, so they are never stored on the campaign.
   useEffect(() => {
     if (automations.length === 0) return;
     let cancelled = false;
     const accountIds = Array.from(
       new Set(automations.map((a) => a.instagramAccountId))
     ).sort();
-    const cacheKey = `ig-thumbs:${accountIds.join(",")}`;
+    const cacheKey = `ig-media:${accountIds.join(",")}`;
 
-    const cached = readCache<Record<string, string>>(cacheKey, 15 * 60 * 1000);
+    const cached = readCache<{
+      thumbs: Record<string, string>;
+      videos: Record<string, string>;
+    }>(cacheKey, 15 * 60 * 1000);
     // Hydrating state from cache is a legitimate effect use here.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (cached.data) setThumbnails(cached.data);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (cached.data) {
+      setThumbnails(cached.data.thumbs);
+      setVideos(cached.data.videos);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     Promise.all(
       accountIds.map((accountId) =>
         fetch(`/api/instagram/posts?instagramAccountId=${accountId}&limit=50`)
           .then((res) => res.json())
           .then((payload) =>
-            payload.success ? (payload.data as { id: string; media_url?: string; thumbnail_url?: string }[]) : []
+            payload.success
+              ? (payload.data as {
+                  id: string;
+                  media_type?: string;
+                  media_url?: string;
+                  thumbnail_url?: string;
+                }[])
+              : []
           )
           .catch(() => [])
       )
     ).then((lists) => {
       if (cancelled) return;
-      const map: Record<string, string> = {};
+      const thumbs: Record<string, string> = {};
+      const vids: Record<string, string> = {};
       for (const list of lists) {
         for (const media of list) {
           const url = media.thumbnail_url ?? media.media_url;
-          if (url) map[media.id] = url;
+          if (url) thumbs[media.id] = url;
+          if (media.media_type === "VIDEO" && media.media_url) {
+            vids[media.id] = media.media_url;
+          }
         }
       }
-      setThumbnails(map);
-      writeCache(cacheKey, map);
+      setThumbnails(thumbs);
+      setVideos(vids);
+      writeCache(cacheKey, { thumbs, videos: vids });
     });
 
     return () => {
       cancelled = true;
     };
   }, [automations]);
+
+  // Close the reel lightbox on Escape.
+  useEffect(() => {
+    if (!playingVideo) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPlayingVideo(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playingVideo]);
 
   function handleAccountChange(accountId: string) {
     setLoading(true);
@@ -326,7 +363,9 @@ export default function CampaignsPage() {
 
       {/* Campaign cards */}
       <div className="space-y-3">
-        {filtered.map((auto) => (
+        {filtered.map((auto) => {
+          const videoUrl = auto.postId ? videos[auto.postId] : undefined;
+          return (
           <div
             key={auto.id}
             onClick={() => router.push(`/campaigns/${auto.id}`)}
@@ -334,23 +373,45 @@ export default function CampaignsPage() {
           >
             <div className="flex items-start justify-between gap-4">
               {auto.postId && thumbnails[auto.postId] && (
-                <a
-                  href={auto.postUrl ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="shrink-0"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumbnails[auto.postId]}
-                    alt="Campaign post"
-                    className="w-12 h-12 rounded object-cover border border-border"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
+                videoUrl ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPlayingVideo({ url: videoUrl, postUrl: auto.postUrl });
                     }}
-                  />
-                </a>
+                    aria-label="Play reel preview"
+                    className="shrink-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbnails[auto.postId]}
+                      alt="Campaign reel"
+                      className="w-12 h-12 rounded object-cover border border-border hover:border-border-hover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </button>
+                ) : (
+                  <a
+                    href={auto.postUrl ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbnails[auto.postId]}
+                      alt="Campaign post"
+                      className="w-12 h-12 rounded object-cover border border-border"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </a>
+                )
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
@@ -483,8 +544,51 @@ export default function CampaignsPage() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Reel lightbox */}
+      {playingVideo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPlayingVideo(null)}
+        >
+          <div
+            className="relative flex flex-col items-end gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-4 text-sm">
+              {playingVideo.postUrl && (
+                <a
+                  href={playingVideo.postUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-zinc-300 hover:text-white"
+                >
+                  Open on Instagram
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setPlayingVideo(null)}
+                className="text-zinc-300 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              src={playingVideo.url}
+              controls
+              autoPlay
+              loop
+              playsInline
+              className="max-h-[80vh] max-w-full rounded-lg"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
