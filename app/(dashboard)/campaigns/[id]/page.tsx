@@ -227,7 +227,7 @@ export default function CampaignDetailPage() {
 
       {/* Right: top bar + tabs */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 border-b border-border pb-3">
           <div className="flex gap-4">
             <TabButton active={tab === "insights"} onClick={() => setTab("insights")}>
               Insights
@@ -271,6 +271,7 @@ export default function CampaignDetailPage() {
         )}
 
         {tab === "preview" && (
+          <div className="flex justify-center sm:justify-start">
           <CampaignPreview
             tab={previewTab}
             onTabChange={setPreviewTab}
@@ -288,6 +289,7 @@ export default function CampaignDetailPage() {
             hasLink={hasLink}
             linkButtonLabel={campaign.linkButtonLabel ?? "Open link"}
           />
+          </div>
         )}
       </div>
     </div>

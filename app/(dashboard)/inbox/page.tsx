@@ -191,9 +191,14 @@ export default function InboxPage() {
         )}
       </div>
 
-      <div className="grid h-[calc(100vh-11rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
-        {/* Conversation list */}
-        <div className="flex min-h-0 flex-col border-b border-border sm:border-b-0 sm:border-r">
+      <div className="grid h-[calc(100dvh-11rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
+        {/* Conversation list. On mobile it takes the full pane and is hidden
+            once a thread is open (ManyChat-style); on sm+ it is always shown. */}
+        <div
+          className={`min-h-0 flex-col border-b border-border sm:flex sm:border-b-0 sm:border-r ${
+            active ? "hidden" : "flex"
+          }`}
+        >
           <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
             Conversations
           </div>
@@ -237,16 +242,29 @@ export default function InboxPage() {
           </div>
         </div>
 
-        {/* Thread */}
-        <div className="flex min-h-0 flex-col">
+        {/* Thread. On mobile it is only shown once a conversation is open and
+            fills the pane; on sm+ it always sits beside the list. */}
+        <div
+          className={`min-h-0 flex-col ${active ? "flex" : "hidden sm:flex"}`}
+        >
           {!active ? (
             <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted">
               Select a conversation to read and reply.
             </div>
           ) : (
             <>
-              <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-                @{active.contact.username ?? "unknown"}
+              <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
+                <button
+                  type="button"
+                  onClick={() => setActiveId(null)}
+                  className="-ml-1 rounded px-2 py-1 text-muted hover:text-foreground sm:hidden"
+                  aria-label="Back to conversations"
+                >
+                  Back
+                </button>
+                <span className="truncate">
+                  @{active.contact.username ?? "unknown"}
+                </span>
               </div>
 
               <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">

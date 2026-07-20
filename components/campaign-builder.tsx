@@ -815,7 +815,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       {/* Right: preview */}
       <div>
         <p className="mb-4 text-sm text-muted">Preview</p>
-        <div className="lg:sticky lg:top-6">
+        <div className="flex justify-center lg:sticky lg:top-6 lg:block">
           <CampaignPreview
             tab={previewTab}
             onTabChange={setPreviewTab}
