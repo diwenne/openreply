@@ -5,7 +5,7 @@ Thanks for wanting to help. OpenReply is public so the comment-to-DM engine is s
 ## Ways to help
 
 - Fix a bug. The DM worker and the webhook parser are the parts that matter most.
-- Improve the docs. If you hit a Meta setup quirk that is not written down, adding it to `docs/instagram-setup.md` is as valuable as a code fix. That guide is where people lose the most time.
+- Improve the docs. If you hit a Meta setup quirk that is not written down, adding it to `docs/setup.md` is as valuable as a code fix. That guide is where people lose the most time.
 - Add campaign templates in `lib/templates/`.
 - Add tests. The suite runs with `npm test`.
 
@@ -14,7 +14,7 @@ Thanks for wanting to help. OpenReply is public so the comment-to-DM engine is s
 ```bash
 npm install
 docker-compose up -d
-cp .env.example .env      # fill in the values, see docs/self-hosting.md
+cp .env.example .env      # fill in the values, see docs/setup.md
 npm run db:generate
 npm run db:migrate
 npm run dev

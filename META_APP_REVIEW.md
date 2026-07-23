@@ -1,6 +1,6 @@
 # Meta App Review notes
 
-You only need App Review if you want people who are not testers on your app to connect their own Instagram accounts. If you run OpenReply for your own accounts, skip this. See the "Letting other people use your instance" section of [docs/instagram-setup.md](docs/instagram-setup.md).
+You only need App Review if you want people who are not testers on your app to connect their own Instagram accounts. If you run OpenReply for your own accounts, skip this. See the "Letting other people use your instance" section of [docs/setup.md](docs/setup.md).
 
 OpenReply uses the official Instagram API to send a private reply to someone who comments on a connected professional account's post or reel.
 
