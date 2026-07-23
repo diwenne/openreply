@@ -118,6 +118,9 @@ export default function InboxPage() {
   // immediately (so revisits are instant) while a fresh copy loads silently.
   useEffect(() => {
     if (!selectedAccountId) return;
+    // Reset the open thread when switching accounts. This is an intentional
+    // synchronous reset on a dependency change, not derived render state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveId(null);
     setMessages([]);
     const cached = readCache<ConversationListItem[]>(
@@ -168,6 +171,8 @@ export default function InboxPage() {
       CACHE_MAX_AGE_MS
     );
     if (cached.data) {
+      // Paint cached messages instantly on thread change; intentional reset.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages(cached.data);
       setThreadLoading(false);
     } else {
