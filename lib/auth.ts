@@ -1,6 +1,8 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Resend from "next-auth/providers/resend";
+import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 
@@ -12,6 +14,29 @@ export const authConfig = {
     Resend({
       apiKey: process.env.RESEND_API_KEY ?? "missing-resend-api-key",
       from: process.env.EMAIL_FROM ?? "OpenReply <login@example.com>",
+    }),
+    Credentials({
+      id: "password",
+      name: "Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = String(credentials?.email ?? "")
+          .trim()
+          .toLowerCase();
+        const password = String(credentials?.password ?? "");
+        if (!email || !password) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user?.password) return null;
+
+        const matches = await bcrypt.compare(password, user.password);
+        if (!matches) return null;
+
+        return { id: user.id, email: user.email, name: user.name };
+      },
     }),
   ],
   callbacks: {

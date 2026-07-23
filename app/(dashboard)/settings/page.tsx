@@ -55,17 +55,61 @@ export default function SettingsPage() {
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
 
+  const [hasPassword, setHasPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/dashboard/stats").then((res) => res.json()),
       fetch("/api/workspace/members").then((res) => res.json()),
+      fetch("/api/account/password").then((res) => res.json()),
     ])
-      .then(([statsPayload, membersPayload]) => {
+      .then(([statsPayload, membersPayload, passwordPayload]) => {
         if (statsPayload.success) setData(statsPayload.data);
         if (membersPayload.success) setMembersData(membersPayload.data);
+        if (passwordPayload.success)
+          setHasPassword(passwordPayload.data.hasPassword);
       })
       .finally(() => setLoading(false));
   }, []);
+
+  async function savePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    setBusy("password");
+    const res = await fetch("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const payload = await res.json();
+    if (payload.success) {
+      setHasPassword(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordSuccess(
+        hasPassword ? "Password updated." : "Password login enabled."
+      );
+    } else {
+      setPasswordError(payload.error ?? "Could not save password");
+    }
+    setBusy(null);
+  }
+
+  async function removePassword() {
+    if (!confirm("Remove password login? You'll only be able to sign in with a magic link.")) {
+      return;
+    }
+    setBusy("password:remove");
+    await fetch("/api/account/password", { method: "DELETE" });
+    setHasPassword(false);
+    setPasswordSuccess("Password login disabled.");
+    setBusy(null);
+  }
 
   async function refreshMembers() {
     const res = await fetch("/api/workspace/members");
@@ -310,6 +354,68 @@ export default function SettingsPage() {
             )}
           </form>
         )}
+      </section>
+
+      <section className="panel rounded p-6">
+        <h2 className="text-base font-semibold mb-2">Password login</h2>
+        <p className="text-xs text-muted mb-6">
+          {hasPassword
+            ? "You can sign in with your email and password, or with a magic link."
+            : "Optional — add a password so you don't need a magic link every time."}
+        </p>
+
+        <form onSubmit={savePassword} className="space-y-3">
+          {hasPassword && (
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              placeholder="Current password"
+              autoComplete="current-password"
+              required
+              className="w-full rounded border border-border bg-surface px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/40"
+            />
+          )}
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder={hasPassword ? "New password" : "Create a password"}
+            autoComplete="new-password"
+            minLength={8}
+            required
+            className="w-full rounded border border-border bg-surface px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/40"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={busy === "password"}
+              className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            >
+              {busy === "password"
+                ? "Saving..."
+                : hasPassword
+                  ? "Update password"
+                  : "Set password"}
+            </button>
+            {hasPassword && (
+              <button
+                type="button"
+                onClick={removePassword}
+                disabled={busy === "password:remove"}
+                className="rounded border border-error/20 px-4 py-2 text-sm font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+              >
+                Remove password
+              </button>
+            )}
+          </div>
+          {passwordError && (
+            <p className="text-sm text-error">{passwordError}</p>
+          )}
+          {passwordSuccess && (
+            <p className="text-sm text-success">{passwordSuccess}</p>
+          )}
+        </form>
       </section>
 
       <section className="panel rounded p-6">

@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { getCampaignTemplate } from "@/lib/templates/campaign-templates";
 
@@ -13,6 +15,8 @@ export default async function LoginPage({
     checkEmail?: string;
     callbackUrl?: string;
     template?: string;
+    mode?: string;
+    error?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -22,6 +26,9 @@ export default async function LoginPage({
     ? `/campaigns/new?template=${selectedTemplate.slug}`
     : null;
   const callbackUrl = params.callbackUrl ?? templateCallbackUrl ?? "/dashboard";
+  const mode = params.mode === "password" ? "password" : "magic-link";
+  const passwordModeUrl = `/login?mode=password${params.callbackUrl ? `&callbackUrl=${encodeURIComponent(params.callbackUrl)}` : ""}`;
+  const magicLinkModeUrl = `/login${params.callbackUrl ? `?callbackUrl=${encodeURIComponent(params.callbackUrl)}` : ""}`;
 
   async function sendMagicLink(formData: FormData) {
     "use server";
@@ -29,6 +36,24 @@ export default async function LoginPage({
       email: String(formData.get("email") ?? ""),
       redirectTo: callbackUrl,
     });
+  }
+
+  async function signInWithPassword(formData: FormData) {
+    "use server";
+    try {
+      await signIn("password", {
+        email: String(formData.get("email") ?? ""),
+        password: String(formData.get("password") ?? ""),
+        redirectTo: callbackUrl,
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        redirect(
+          `/login?mode=password&error=1${params.callbackUrl ? `&callbackUrl=${encodeURIComponent(params.callbackUrl)}` : ""}`
+        );
+      }
+      throw error;
+    }
   }
 
   return (
@@ -66,32 +91,112 @@ export default async function LoginPage({
               </p>
             </div>
           ) : (
-            <form action={sendMagicLink} className="space-y-5">
-              <div className="space-y-2">
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-foreground"
+            <>
+              <div className="mb-5 grid grid-cols-2 gap-1 rounded bg-surface p-1 text-sm">
+                <a
+                  href={magicLinkModeUrl}
+                  className={`rounded px-3 py-2 text-center font-medium transition-colors ${
+                    mode === "magic-link"
+                      ? "bg-accent text-white"
+                      : "text-muted hover:text-foreground"
+                  }`}
                 >
-                  Work email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder="you@company.com"
-                  className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
-                />
+                  Magic link
+                </a>
+                <a
+                  href={passwordModeUrl}
+                  className={`rounded px-3 py-2 text-center font-medium transition-colors ${
+                    mode === "password"
+                      ? "bg-accent text-white"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Password
+                </a>
               </div>
 
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-2 rounded bg-accent px-6 py-3.5 text-sm font-semibold text-white shadow-indigo-500/25 transition-all hover:shadow-indigo-500/30"
-              >
-                Email me a magic link
-              </button>
-            </form>
+              {mode === "password" ? (
+                <form action={signInWithPassword} className="space-y-5">
+                  {params.error && (
+                    <p className="text-sm text-error">
+                      Incorrect email or password.
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="email"
+                      className="block text-sm font-medium text-foreground"
+                    >
+                      Work email
+                    </label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      placeholder="you@company.com"
+                      className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-medium text-foreground"
+                    >
+                      Password
+                    </label>
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded bg-accent px-6 py-3.5 text-sm font-semibold text-white shadow-indigo-500/25 transition-all hover:shadow-indigo-500/30"
+                  >
+                    Sign in
+                  </button>
+                  <p className="text-center text-xs text-muted">
+                    No password set yet? Sign in with a magic link, then add
+                    one from Settings.
+                  </p>
+                </form>
+              ) : (
+                <form action={sendMagicLink} className="space-y-5">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="email"
+                      className="block text-sm font-medium text-foreground"
+                    >
+                      Work email
+                    </label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      placeholder="you@company.com"
+                      className="w-full px-4 py-3 rounded bg-surface border border-border text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded bg-accent px-6 py-3.5 text-sm font-semibold text-white shadow-indigo-500/25 transition-all hover:shadow-indigo-500/30"
+                  >
+                    Email me a magic link
+                  </button>
+                </form>
+              )}
+            </>
           )}
         </div>
       </div>
