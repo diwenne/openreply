@@ -1,0 +1,9 @@
+# Railway worker service — see docs/setup.md Step 1.
+# The worker only needs the generated Prisma client, never `next build`,
+# and migrations are applied by the web app's vercel-build, never here.
+[build]
+buildCommand = "npm run db:generate"
+
+[deploy]
+startCommand = "npm run worker"
+restartPolicyType = "ALWAYS"
