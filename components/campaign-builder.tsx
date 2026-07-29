@@ -24,7 +24,7 @@ import {
   type ImportRow,
 } from "@/lib/import-queue";
 
-type TriggerScope = "specific" | "any" | "next";
+type TriggerScope = "specific" | "any" | "next" | "story";
 type MatchMode = "specific" | "any";
 
 interface LoadedCampaign {
@@ -34,6 +34,7 @@ interface LoadedCampaign {
   postUrl: string | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
+  matchStoryReplies: boolean;
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
@@ -234,7 +235,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setName(c.name);
         setSelectedAccountId(c.instagramAccountId);
         setTriggerScope(
-          c.matchAnyPost ? "any" : c.pendingNextReel ? "next" : "specific"
+          c.matchStoryReplies
+            ? "story"
+            : c.matchAnyPost
+              ? "any"
+              : c.pendingNextReel
+                ? "next"
+                : "specific"
         );
         setPostId(c.postId);
         setPostUrl(c.postUrl);
@@ -361,7 +368,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     if (matchMode === "specific" && keywords.length === 0)
       return setError("Add at least one keyword, or switch to any word.");
     if (!dmMessage.trim()) return setError("Add the DM with the link.");
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
+    // Story campaigns have no opening-DM or public-reply legs; hidden state is
+    // simply not sent.
+    const isStory = triggerScope === "story";
+    const sendOpeningDm = !isStory && openingDmEnabled;
+    const sendPublicReply = !isStory && publicReplyEnabled;
+    if (sendOpeningDm && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
 
     setSaving(true);
@@ -373,14 +385,15 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       postUrl: triggerScope === "specific" ? postUrl : null,
       matchAnyPost: triggerScope === "any",
       pendingNextReel: triggerScope === "next",
+      matchStoryReplies: isStory,
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmMessage,
-      openingDmEnabled,
-      openingDmMessage: openingDmEnabled ? openingDmMessage : null,
-      openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
-      publicReplyEnabled,
-      publicReplyMessages: publicReplyEnabled
+      openingDmEnabled: sendOpeningDm,
+      openingDmMessage: sendOpeningDm ? openingDmMessage : null,
+      openingDmButtonLabel: sendOpeningDm ? openingDmButtonLabel : null,
+      publicReplyEnabled: sendPublicReply,
+      publicReplyMessages: sendPublicReply
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
         : [],
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
@@ -623,12 +636,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
 
-        <Section title="When someone comments on">
+        <Section title="When someone">
           <Radio
             checked={triggerScope === "specific"}
             onSelect={() => setTriggerScope("specific")}
           >
-            a specific post or reel
+            comments on a specific post or reel
           </Radio>
           {triggerScope === "specific" && (
             <div className="rounded-lg border border-border p-2">
@@ -644,17 +657,35 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             checked={triggerScope === "any"}
             onSelect={() => setTriggerScope("any")}
           >
-            any post or reel
+            comments on any post or reel
           </Radio>
           <Radio
             checked={triggerScope === "next"}
             onSelect={() => setTriggerScope("next")}
           >
-            next post or reel
+            comments on the next post or reel
           </Radio>
+          <Radio
+            checked={triggerScope === "story"}
+            onSelect={() => setTriggerScope("story")}
+          >
+            replies to a story
+          </Radio>
+          {triggerScope === "story" && (
+            <p className="text-xs text-muted">
+              Fires on replies to any of your stories. Only keyword matches are
+              logged — the reply text itself is never stored.
+            </p>
+          )}
         </Section>
 
-        <Section title="And this comment has">
+        <Section
+          title={
+            triggerScope === "story"
+              ? "And their reply has"
+              : "And this comment has"
+          }
+        >
           <Radio
             checked={matchMode === "specific"}
             onSelect={() => setMatchMode("specific")}
@@ -678,16 +709,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           >
             any word
           </Radio>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <span className="text-sm text-foreground">
-              reply to their comments under the post
-            </span>
-            <Toggle
-              on={publicReplyEnabled}
-              onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
-            />
-          </div>
-          {publicReplyEnabled && (
+          {triggerScope !== "story" && (
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+              <span className="text-sm text-foreground">
+                reply to their comments under the post
+              </span>
+              <Toggle
+                on={publicReplyEnabled}
+                onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
+              />
+            </div>
+          )}
+          {triggerScope !== "story" && publicReplyEnabled && (
             <div className="space-y-2">
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -737,6 +770,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </Section>
 
+        {triggerScope !== "story" && (
         <Section title="They will get">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -767,8 +801,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             )}
           </div>
         </Section>
+        )}
 
-        <Section title="And then, they will get">
+        <Section
+          title={
+            triggerScope === "story" ? "They will get" : "And then, they will get"
+          }
+        >
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">a DM with a link</span>
             <textarea
@@ -824,14 +863,15 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             postThumb={postThumb}
             caption={postCaption}
             sampleComment={keywords[0] ?? ""}
-            publicReplyEnabled={publicReplyEnabled}
+            publicReplyEnabled={triggerScope !== "story" && publicReplyEnabled}
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
-            openingDmEnabled={openingDmEnabled}
+            openingDmEnabled={triggerScope !== "story" && openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
             revealMessage={dmMessage}
             hasLink={Boolean(trackedDestinationUrl.trim())}
             linkButtonLabel={linkButtonLabel || "Open link"}
+            storyMode={triggerScope === "story"}
           />
         </div>
       </div>

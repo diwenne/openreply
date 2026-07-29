@@ -309,6 +309,27 @@ export async function sendDirectMessageWithLinkButton(
   return handleResponse(response);
 }
 
+/**
+ * Fetch the profile of a messaging contact (IGSID) so a story-reply match can
+ * be labelled with a username. Only ever called for matched senders — never
+ * to identify non-matching DMs.
+ */
+export async function getMessagingUserProfile(
+  accessToken: string,
+  userId: string
+): Promise<{ id?: string; username?: string; name?: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${userId}?fields=username,name`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  return handleResponse(response);
+}
+
 export async function sendCommentReply(
   accessToken: string,
   commentId: string,

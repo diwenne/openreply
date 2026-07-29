@@ -3,12 +3,15 @@ import {
   getDMQueue,
   getRedisConnection,
   POSTBACK_JOB_NAME,
+  STORY_REPLY_JOB_NAME,
   type DmQueueJob,
   type ProcessCommentJob,
   type ProcessPostbackJob,
+  type ProcessStoryReplyJob,
 } from "./client";
 import { prisma } from "@/lib/db/client";
 import {
+  getMessagingUserProfile,
   MetaApiError,
   sendCommentReply,
   sendDirectMessage,
@@ -621,9 +624,283 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   }
 }
 
+/**
+ * Send the campaign DM for a story-reply keyword match. The webhook route has
+ * already matched the keyword, so this job carries only match metadata — never
+ * the reply text, which is never stored anywhere. Replying is allowed because
+ * the user's story reply opened Meta's 24-hour messaging window.
+ */
+async function processStoryReply(
+  job: Job<ProcessStoryReplyJob>
+): Promise<void> {
+  const {
+    instagramAccountId,
+    senderId,
+    messageId,
+    storyId,
+    automationId,
+    matchedKeyword,
+  } = job.data;
+  const requeueAttempt = job.data.requeueAttempt ?? 0;
+
+  const automation = await prisma.automation.findFirst({
+    where: { id: automationId, isActive: true, matchStoryReplies: true },
+    include: {
+      instagramAccount: true,
+      workspace: true,
+      trackedLinks: {
+        select: { slug: true, destinationUrl: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (
+    !automation ||
+    automation.instagramAccount.instagramId !== instagramAccountId ||
+    !automation.instagramAccount.accessToken
+  ) {
+    return;
+  }
+
+  // One DM per matched story reply per campaign, keyed by the message id.
+  const logKey = {
+    automationId_commentId: {
+      automationId: automation.id,
+      commentId: messageId,
+    },
+  };
+  const existingLog = await prisma.dmLog.findUnique({ where: logKey });
+  if (
+    existingLog?.status === "SENT" ||
+    existingLog?.status === "SKIPPED_PLAN_LIMIT"
+  ) {
+    return;
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(automation.instagramAccount.accessToken);
+  } catch {
+    await prisma.dmLog.upsert({
+      where: logKey,
+      create: {
+        workspaceId: automation.workspaceId,
+        automationId: automation.id,
+        instagramAccountId: automation.instagramAccountId,
+        commenterId: senderId,
+        commentText: "(story reply)",
+        commentId: messageId,
+        matchedKeyword,
+        storyId: storyId ?? null,
+        status: "FAILED",
+        errorMessage: "Failed to decrypt Instagram access token",
+      },
+      update: {
+        status: "FAILED",
+        errorMessage: "Failed to decrypt Instagram access token",
+      },
+    });
+    return;
+  }
+
+  // Label the log with the sender's username — matched senders only.
+  let commenterName: string | null = existingLog?.commenterName ?? null;
+  if (!commenterName) {
+    try {
+      commenterName =
+        (await getMessagingUserProfile(accessToken, senderId)).username ?? null;
+    } catch {
+      commenterName = null;
+    }
+  }
+
+  await prisma.dmLog.upsert({
+    where: logKey,
+    create: {
+      workspaceId: automation.workspaceId,
+      automationId: automation.id,
+      instagramAccountId: automation.instagramAccountId,
+      commenterId: senderId,
+      commenterName,
+      // The reply text is never stored; the matched keyword is the trigger.
+      commentText: "(story reply)",
+      commentId: messageId,
+      matchedKeyword,
+      storyId: storyId ?? null,
+      status: "PENDING",
+      attempts: job.attemptsMade + 1,
+    },
+    update: {
+      status: "PENDING",
+      attempts: job.attemptsMade + 1,
+      matchedKeyword,
+      errorMessage: null,
+      ...(commenterName ? { commenterName } : {}),
+    },
+  });
+
+  const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+  if (!usage.allowed) {
+    await prisma.dmLog.update({
+      where: logKey,
+      data: {
+        status: "SKIPPED_PLAN_LIMIT",
+        errorMessage: `Monthly DM limit reached (${usage.limit})`,
+      },
+    });
+    return;
+  }
+
+  let rateLimit;
+  try {
+    rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
+  } catch (error) {
+    await releaseWorkspaceDMReservation(
+      automation.workspaceId,
+      usage.periodStart
+    );
+    await prisma.dmLog.update({
+      where: logKey,
+      data: {
+        status: "FAILED",
+        attempts: job.attemptsMade + 1,
+        errorMessage: formatError(error),
+      },
+    });
+    throw error;
+  }
+
+  if (!rateLimit.allowed) {
+    await releaseWorkspaceDMReservation(
+      automation.workspaceId,
+      usage.periodStart
+    );
+
+    if (rateLimit.shouldSkip) {
+      await prisma.dmLog.update({
+        where: logKey,
+        data: {
+          status: "SKIPPED_RATE_LIMIT",
+          errorMessage: "Hourly Instagram DM rate limit reached",
+        },
+      });
+      return;
+    }
+
+    if (rateLimit.shouldRequeue) {
+      await prisma.dmLog.update({
+        where: logKey,
+        data: {
+          status: "PENDING",
+          errorMessage: "Hourly rate limit hit; retry scheduled",
+        },
+      });
+
+      await getDMQueue().add(
+        STORY_REPLY_JOB_NAME,
+        {
+          ...job.data,
+          requeueAttempt: requeueAttempt + 1,
+        },
+        {
+          delay: rateLimit.requeueDelayMs,
+          jobId: `storyreply_${instagramAccountId}_${messageId.replace(
+            /:/g,
+            "_"
+          )}_${automation.id}_retry_${requeueAttempt + 1}`,
+        }
+      );
+      return;
+    }
+  }
+
+  const primaryLink = automation.trackedLinks[0];
+
+  try {
+    if (primaryLink) {
+      // Try button template first; if Meta rejects it, fall back to inline link.
+      const bodyText =
+        renderMessageWithoutLink({
+          message: automation.dmMessage,
+          commenterName,
+        }) || "Here's your link:";
+      const trackedUrl = buildTrackedUrl(primaryLink.slug);
+
+      try {
+        await sendDirectMessageWithLinkButton(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          senderId,
+          bodyText,
+          automation.linkButtonLabel || "Open link",
+          trackedUrl
+        );
+      } catch (buttonError) {
+        // Button template rejected; send as text with inline link instead.
+        console.log(
+          "[DM Worker] Button template rejected for story reply, falling back to inline link:",
+          formatError(buttonError)
+        );
+        const fallbackMessage =
+          renderMessageWithTracking({
+            message: automation.dmMessage,
+            commenterName,
+            trackedLinks: [primaryLink],
+          }) || `${bodyText}\n${trackedUrl}`;
+        await sendDirectMessage(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          senderId,
+          fallbackMessage
+        );
+      }
+    } else {
+      const dmMessage = renderMessageWithTracking({
+        message: automation.dmMessage,
+        commenterName,
+        trackedLinks: automation.trackedLinks,
+      });
+      await sendDirectMessage(
+        accessToken,
+        automation.instagramAccount.instagramId,
+        senderId,
+        dmMessage
+      );
+    }
+
+    await prisma.dmLog.update({
+      where: logKey,
+      data: {
+        status: "SENT",
+        dmSentAt: new Date(),
+        errorMessage: null,
+      },
+    });
+  } catch (error) {
+    await releaseWorkspaceDMReservation(
+      automation.workspaceId,
+      usage.periodStart
+    );
+
+    await prisma.dmLog.update({
+      where: logKey,
+      data: {
+        status: "FAILED",
+        attempts: job.attemptsMade + 1,
+        errorMessage: formatError(error),
+      },
+    });
+    throw error;
+  }
+}
+
 async function processJob(job: Job<DmQueueJob>): Promise<void> {
   if (job.name === POSTBACK_JOB_NAME) {
     return processPostback(job as Job<ProcessPostbackJob>);
+  }
+  if (job.name === STORY_REPLY_JOB_NAME) {
+    return processStoryReply(job as Job<ProcessStoryReplyJob>);
   }
   return processComment(job as Job<ProcessCommentJob>);
 }
@@ -635,7 +912,11 @@ async function recordWorkerFailure(
   try {
     const instagramAccountId = job?.data.instagramAccountId;
     const commentId =
-      job && "commentId" in job.data ? job.data.commentId : null;
+      job && "commentId" in job.data
+        ? job.data.commentId
+        : job && "messageId" in job.data
+          ? job.data.messageId
+          : null;
     const account = instagramAccountId
       ? await prisma.instagramAccount.findUnique({
           where: { instagramId: instagramAccountId },

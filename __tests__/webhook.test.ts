@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { verifyWebhookSignature, parseCommentEvents } from "../lib/meta/webhook";
+import {
+  verifyWebhookSignature,
+  parseCommentEvents,
+  parseStoryReplyEvents,
+  payloadContainsMessages,
+} from "../lib/meta/webhook";
 import { createHmac } from "crypto";
 
 // Mock the environment variable
@@ -283,5 +288,166 @@ describe("parseCommentEvents", () => {
 
     const events = parseCommentEvents(payload);
     expect(events).toHaveLength(0);
+  });
+});
+
+function storyReplyPayload(
+  message: Record<string, unknown>,
+  senderId = "user_789"
+) {
+  return {
+    object: "instagram",
+    entry: [
+      {
+        id: "page_123",
+        time: 1234567890,
+        messaging: [
+          {
+            sender: { id: senderId },
+            recipient: { id: "page_123" },
+            message,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("parseStoryReplyEvents", () => {
+  it("should parse a valid story reply", () => {
+    const payload = storyReplyPayload({
+      mid: "mid_1",
+      text: "MAISON",
+      reply_to: { story: { id: "story_42", url: "https://cdn.example/s.jpg" } },
+    });
+
+    const events = parseStoryReplyEvents(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      instagramAccountId: "page_123",
+      senderId: "user_789",
+      messageId: "mid_1",
+      text: "MAISON",
+      storyId: "story_42",
+      storyUrl: "https://cdn.example/s.jpg",
+    });
+  });
+
+  it("should ignore regular DMs that are not story replies", () => {
+    const payload = storyReplyPayload({ mid: "mid_1", text: "hello there" });
+    expect(parseStoryReplyEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore echoes of the account's own messages", () => {
+    const payload = storyReplyPayload({
+      mid: "mid_1",
+      text: "MAISON",
+      is_echo: true,
+      reply_to: { story: { id: "story_42" } },
+    });
+    expect(parseStoryReplyEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore replies sent by the account itself", () => {
+    const payload = storyReplyPayload(
+      {
+        mid: "mid_1",
+        text: "MAISON",
+        reply_to: { story: { id: "story_42" } },
+      },
+      "page_123"
+    );
+    expect(parseStoryReplyEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore story replies without a message id", () => {
+    const payload = storyReplyPayload({
+      text: "MAISON",
+      reply_to: { story: { id: "story_42" } },
+    });
+    expect(parseStoryReplyEvents(payload)).toHaveLength(0);
+  });
+
+  it("should parse replies with empty text so matching can decide later", () => {
+    const payload = storyReplyPayload({
+      mid: "mid_1",
+      reply_to: { story: { id: "story_42" } },
+    });
+
+    const events = parseStoryReplyEvents(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].text).toBe("");
+  });
+
+  it("should ignore non-instagram objects", () => {
+    const payload = {
+      ...storyReplyPayload({
+        mid: "mid_1",
+        text: "MAISON",
+        reply_to: { story: { id: "story_42" } },
+      }),
+      object: "page",
+    };
+    expect(parseStoryReplyEvents(payload)).toHaveLength(0);
+  });
+});
+
+describe("payloadContainsMessages", () => {
+  it("should detect a user DM", () => {
+    const payload = storyReplyPayload({ mid: "mid_1", text: "hello" });
+    expect(payloadContainsMessages(payload)).toBe(true);
+  });
+
+  it("should detect echoes too — they also carry conversation content", () => {
+    const payload = storyReplyPayload({
+      mid: "mid_1",
+      text: "our own reply",
+      is_echo: true,
+    });
+    expect(payloadContainsMessages(payload)).toBe(true);
+  });
+
+  it("should not flag comment payloads", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "comments",
+              value: {
+                id: "comment_456",
+                text: "LINK",
+                from: { id: "user_789", username: "test" },
+                media: { id: "media_101" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(payloadContainsMessages(payload)).toBe(false);
+  });
+
+  it("should not flag postback payloads", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "user_789" },
+              recipient: { id: "page_123" },
+              postback: { mid: "mid_1", payload: "reveal:abc" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(payloadContainsMessages(payload)).toBe(false);
   });
 });

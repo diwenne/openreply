@@ -176,6 +176,7 @@ Still in the Instagram product, find the Configure webhooks step.
 - Verify token: the value of `WEBHOOK_VERIFY_TOKEN` from your environment
 - Click Verify and save. It should succeed immediately, because the app answers Meta's verification challenge. If the button is greyed out, click into the verify-token field and paste the token again; editing the callback URL often clears it.
 - Subscribe to the `comments` field.
+- If you want story-reply campaigns (a keyword DM sent in reply to one of your stories), also subscribe to the `messages` field. Note that `messages` delivers every DM the account receives; OpenReply drops anything that is not a story-reply keyword match without storing it — only matches are logged, and never the reply text itself.
 
 To test delivery without a real comment, click Test next to `comments`, then click Send to My Server. This is a two-step control. Clicking Test only previews the sample payload; the second button is what actually POSTs it to your endpoint. After sending, a row should appear in your `WebhookEvent` table.
 

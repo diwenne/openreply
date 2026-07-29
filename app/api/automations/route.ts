@@ -24,6 +24,7 @@ const createAutomationSchema = z
     postUrl: z.string().url().optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
+    matchStoryReplies: z.boolean().optional().default(false),
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
     dmMessage: z.string().min(1).max(1000),
@@ -46,9 +47,14 @@ const createAutomationSchema = z
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
-  // A campaign must target a specific post, any post, or the next reel.
+  // A campaign must target a specific post, any post, the next reel, or
+  // story replies.
   .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    (d) =>
+      d.matchAnyPost ||
+      d.pendingNextReel ||
+      d.matchStoryReplies ||
+      Boolean(d.postId),
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
   // And it must match either specific words or any word.
@@ -72,6 +78,7 @@ const updateAutomationSchema = z.object({
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
+  matchStoryReplies: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   matchAnyWord: z.boolean().optional(),
   dmMessage: z.string().min(1).max(1000).optional(),
@@ -315,10 +322,24 @@ export async function POST(request: NextRequest) {
 
   const { trackedDestinationUrl } = parsed.data;
 
-  const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
-    parsed.data;
+  const { matchStoryReplies, matchAnyWord } = parsed.data;
+  // The triggers are mutually exclusive; story replies win so a story
+  // campaign can never also fire on comments.
+  const matchAnyPost = matchStoryReplies ? false : parsed.data.matchAnyPost;
+  const pendingNextReel = matchStoryReplies
+    ? false
+    : parsed.data.pendingNextReel;
   // A post is only stored for the "specific post" trigger.
-  const isSpecificPost = !pendingNextReel && !matchAnyPost;
+  const isSpecificPost =
+    !pendingNextReel && !matchAnyPost && !matchStoryReplies;
+  // A story-reply campaign answers a DM: there is no comment to reply to
+  // publicly and no opening-DM button flow, so both are forced off.
+  const openingDmEnabled = matchStoryReplies
+    ? false
+    : parsed.data.openingDmEnabled;
+  const publicReplyEnabled = matchStoryReplies
+    ? false
+    : parsed.data.publicReplyEnabled;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -338,6 +359,7 @@ export async function POST(request: NextRequest) {
       postUrl: isSpecificPost ? parsed.data.postUrl : null,
       pendingNextReel,
       matchAnyPost,
+      matchStoryReplies,
       keywords: matchAnyWord ? [] : parsed.data.keywords,
       matchAnyWord,
       dmMessage: parsed.data.dmMessage,
@@ -349,11 +371,9 @@ export async function POST(request: NextRequest) {
         ? parsed.data.openingDmButtonLabel || null
         : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
-      publicReplyEnabled: parsed.data.publicReplyEnabled,
-      publicReplyMessages: parsed.data.publicReplyEnabled
-        ? publicReplyList
-        : [],
-      publicReplyMessage: parsed.data.publicReplyEnabled
+      publicReplyEnabled,
+      publicReplyMessages: publicReplyEnabled ? publicReplyList : [],
+      publicReplyMessage: publicReplyEnabled
         ? publicReplyList[0] ?? parsed.data.publicReplyMessage ?? null
         : null,
       isActive: parsed.data.isActive,
@@ -449,6 +469,18 @@ export async function PATCH(request: NextRequest) {
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
     automationData.postId = null;
     automationData.postUrl = null;
+  }
+  // Story-reply campaigns carry no post and have no public-reply or
+  // opening-DM legs (they answer a DM, not a comment).
+  if (automationData.matchStoryReplies === true) {
+    automationData.postId = null;
+    automationData.postUrl = null;
+    automationData.matchAnyPost = false;
+    automationData.pendingNextReel = false;
+    automationData.openingDmEnabled = false;
+    automationData.openingDmMessage = null;
+    automationData.openingDmButtonLabel = null;
+    automationData.publicReplyEnabled = false;
   }
   // Keep the public-reply variations list and the legacy single field in sync.
   if (automationData.publicReplyMessages !== undefined) {

@@ -20,6 +20,7 @@ interface Campaign {
   postUrl: string | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
+  matchStoryReplies: boolean;
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
@@ -139,13 +140,17 @@ export default function CampaignDetailPage() {
         : [];
   const hasLink = Boolean(campaign.trackedLinks?.[0]?.destinationUrl);
 
-  const trigger = campaign.matchAnyPost
-    ? "Any post or reel"
-    : campaign.pendingNextReel
-      ? "Your next reel"
-      : "A specific post or reel";
+  const trigger = campaign.matchStoryReplies
+    ? "Story replies"
+    : campaign.matchAnyPost
+      ? "Any post or reel"
+      : campaign.pendingNextReel
+        ? "Your next reel"
+        : "A specific post or reel";
   const matchText = campaign.matchAnyWord
-    ? "Any comment"
+    ? campaign.matchStoryReplies
+      ? "Any reply"
+      : "Any comment"
     : campaign.keywords.join(", ") || "No keywords";
 
   const metrics = [
@@ -191,7 +196,11 @@ export default function CampaignDetailPage() {
               />
             ) : (
               <div className="grid h-14 w-14 place-items-center rounded bg-surface-hover text-[10px] text-muted">
-                {campaign.matchAnyPost || campaign.pendingNextReel ? "Any" : "Post"}
+                {campaign.matchStoryReplies
+                  ? "Story"
+                  : campaign.matchAnyPost || campaign.pendingNextReel
+                    ? "Any"
+                    : "Post"}
               </div>
             )}
             <span className="text-sm text-foreground">{trigger}</span>

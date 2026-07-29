@@ -64,6 +64,15 @@ interface WebhookEntry {
     sender?: { id?: string };
     recipient?: { id?: string };
     postback?: { mid?: string; title?: string; payload?: string };
+    message?: {
+      mid?: string;
+      text?: string;
+      is_echo?: boolean;
+      reply_to?: {
+        mid?: string;
+        story?: { id?: string; url?: string };
+      };
+    };
   }>;
 }
 
@@ -72,6 +81,15 @@ export interface WebhookPostbackEvent {
   userId: string;
   payload: string;
   mid?: string;
+}
+
+export interface WebhookStoryReplyEvent {
+  instagramAccountId: string;
+  senderId: string;
+  messageId: string;
+  text: string;
+  storyId?: string;
+  storyUrl?: string;
 }
 
 interface WebhookPayload {
@@ -113,6 +131,64 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
         commenterId,
         commenterName: value.from?.username,
         mediaId,
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Whether a payload carries any DM content (a `message` object in a messaging
+ * event, echoes included). Such payloads must never be persisted raw: the
+ * `messages` webhook field delivers every DM the account receives, and only
+ * story-reply keyword matches may leave a trace (see the webhook route).
+ */
+export function payloadContainsMessages(payload: WebhookPayload): boolean {
+  if (payload.object !== "instagram") return false;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      if (messaging.message) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Parse story replies (a DM sent by replying to one of the account's stories)
+ * out of a webhook payload. Regular DMs — no `reply_to.story` — are not
+ * events; the route drops them without persisting anything.
+ */
+export function parseStoryReplyEvents(
+  payload: WebhookPayload
+): WebhookStoryReplyEvent[] {
+  const events: WebhookStoryReplyEvent[] = [];
+
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message) continue;
+      // Echoes are the account's own outbound messages.
+      if (message.is_echo) continue;
+
+      const senderId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+      const story = message.reply_to?.story;
+
+      if (!story || !senderId || !accountId || !message.mid) continue;
+      if (senderId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        senderId,
+        messageId: message.mid,
+        text: message.text ?? "",
+        storyId: story.id,
+        storyUrl: story.url,
       });
     }
   }

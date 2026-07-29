@@ -20,6 +20,7 @@ interface Campaign {
   postUrl: string | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
+  matchStoryReplies: boolean;
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
@@ -219,7 +220,8 @@ export default function CampaignsPage() {
 
   async function duplicateAutomation(auto: Campaign) {
     setMenuOpenId(null);
-    const specific = !auto.matchAnyPost && !auto.pendingNextReel;
+    const specific =
+      !auto.matchAnyPost && !auto.pendingNextReel && !auto.matchStoryReplies;
     try {
       const res = await fetch("/api/automations", {
         method: "POST",
@@ -231,6 +233,7 @@ export default function CampaignsPage() {
           postUrl: specific ? auto.postUrl : null,
           matchAnyPost: auto.matchAnyPost,
           pendingNextReel: auto.pendingNextReel,
+          matchStoryReplies: auto.matchStoryReplies,
           matchAnyWord: auto.matchAnyWord,
           keywords: auto.keywords,
           dmMessage: auto.dmMessage,
@@ -431,6 +434,11 @@ export default function CampaignsPage() {
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
                       Waiting for next reel
+                    </span>
+                  )}
+                  {auto.matchStoryReplies && (
+                    <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                      Story replies
                     </span>
                   )}
                 </div>

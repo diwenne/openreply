@@ -155,6 +155,9 @@ model Automation {
   postUrl        String?
   pendingNextReel Boolean @default(false)
   matchAnyPost   Boolean @default(false)
+  // Story-reply campaigns fire on keyword DMs sent in reply to any story,
+  // instead of on comments. They carry no target post.
+  matchStoryReplies Boolean @default(false)
   keywords       String[]
   matchAnyWord   Boolean @default(false)
   dmMessage      String
@@ -195,6 +198,9 @@ model DmLog {
   commentText   String
   commentId     String
   matchedKeyword String?
+  // For story-reply DMs: the story that was replied to. The reply text itself
+  // is never stored — only the matched keyword identifies the trigger.
+  storyId       String?
   status        DmStatus @default(PENDING)
   attempts      Int      @default(0)
   dmSentAt      DateTime?

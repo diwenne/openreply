@@ -17,6 +17,7 @@ const {
     },
     dmLog: {
       findUnique: vi.fn(),
+      create: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
     },
@@ -46,6 +47,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: vi.fn(),
   sendDirectMessage: vi.fn(),
+  getMessagingUserProfile: vi.fn().mockResolvedValue({ username: "story_user" }),
   sendDirectMessageWithLinkButton: vi.fn(),
   sendCommentReply: vi.fn(),
   MetaApiError: class MetaApiError extends Error {
@@ -90,6 +92,7 @@ vi.mock("@/lib/queue/client", () => ({
   }),
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
+  STORY_REPLY_JOB_NAME: "process-story-reply",
 }));
 
 vi.mock("bullmq", () => {
@@ -340,7 +343,7 @@ describe("DM Worker — Full Pipeline", () => {
       }),
       expect.objectContaining({
         delay: 1800000,
-        jobId: "comment:ig_456:comment_555:retry:1",
+        jobId: "comment_ig_456_comment_555_retry_1",
       })
     );
   });

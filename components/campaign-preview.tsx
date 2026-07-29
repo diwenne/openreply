@@ -28,6 +28,8 @@ interface CampaignPreviewProps {
   revealMessage: string;
   hasLink: boolean;
   linkButtonLabel: string;
+  // Story-reply campaigns have no post or comments leg — only the DM screen.
+  storyMode?: boolean;
 }
 
 const SAMPLE_USER = "username";
@@ -378,12 +380,15 @@ function DmScreen({
 /* ----------------------------- root ----------------------------- */
 
 export default function CampaignPreview(props: CampaignPreviewProps) {
-  const { tab, onTabChange } = props;
-  const tabs: { key: PreviewTab; label: string }[] = [
-    { key: "post", label: "Post" },
-    { key: "comments", label: "Comments" },
-    { key: "dm", label: "DM" },
-  ];
+  const { onTabChange, storyMode } = props;
+  const tab = storyMode ? "dm" : props.tab;
+  const tabs: { key: PreviewTab; label: string }[] = storyMode
+    ? [{ key: "dm", label: "DM" }]
+    : [
+        { key: "post", label: "Post" },
+        { key: "comments", label: "Comments" },
+        { key: "dm", label: "DM" },
+      ];
 
   return (
     <div className="flex flex-col items-center gap-5">

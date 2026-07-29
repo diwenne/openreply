@@ -43,9 +43,25 @@ export interface ProcessPostbackJob {
   mid?: string;
 }
 
-export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob;
+// A keyword match on a story reply. The webhook route matches keywords before
+// enqueueing, so this job never carries the message text — only the match.
+export interface ProcessStoryReplyJob {
+  instagramAccountId: string;
+  senderId: string;
+  messageId: string;
+  storyId?: string;
+  automationId: string;
+  matchedKeyword: string | null;
+  requeueAttempt?: number;
+}
+
+export type DmQueueJob =
+  | ProcessCommentJob
+  | ProcessPostbackJob
+  | ProcessStoryReplyJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
+export const STORY_REPLY_JOB_NAME = "process-story-reply";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 
