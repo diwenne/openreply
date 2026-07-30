@@ -9,7 +9,9 @@ readonly LOCAL_RETENTION_DAYS=14
 readonly REMOTE_RETENTION_DAYS=30
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly TIMESTAMP
-readonly FINAL_PATH="${BACKUP_DIR}/openreply-${TIMESTAMP}.dump"
+readonly FINAL_NAME="openreply-${TIMESTAMP}.dump"
+readonly FINAL_PATH="${BACKUP_DIR}/${FINAL_NAME}"
+readonly CHECKSUM_PATH="${FINAL_PATH}.sha256"
 readonly TEMP_PATH="${FINAL_PATH}.tmp"
 
 umask 077
@@ -22,11 +24,14 @@ docker compose -f compose.production.yml exec -T postgres \
 
 test -s "$TEMP_PATH"
 mv "$TEMP_PATH" "$FINAL_PATH"
-sha256sum "$FINAL_PATH" > "${FINAL_PATH}.sha256"
+(
+  cd "$BACKUP_DIR"
+  sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
+)
 
 ssh "$REMOTE_BACKUP_HOST" install -d -m 0700 "$REMOTE_BACKUP_DIR"
 rsync --archive --chmod=F600 \
-  "$FINAL_PATH" "${FINAL_PATH}.sha256" \
+  "$FINAL_PATH" "$CHECKSUM_PATH" \
   "${REMOTE_BACKUP_HOST}:${REMOTE_BACKUP_DIR}/"
 
 find "$BACKUP_DIR" -maxdepth 1 -type f \
