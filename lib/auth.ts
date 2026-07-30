@@ -3,6 +3,7 @@ import Resend from "next-auth/providers/resend";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
+import { isAuthEmailAllowed } from "@/lib/auth-allowlist";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
@@ -15,6 +16,9 @@ export const authConfig = {
     }),
   ],
   callbacks: {
+    async signIn({ user }) {
+      return isAuthEmailAllowed(user.email, process.env.AUTH_ALLOWED_EMAILS);
+    },
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
