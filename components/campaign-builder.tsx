@@ -139,6 +139,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [isActive, setIsActive] = useState(true);
 
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
+  // Comment-scope campaigns can ALSO fire on story replies (same keywords,
+  // same DM) without a second campaign.
+  const [storyAlso, setStoryAlso] = useState(false);
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
   const [postThumb, setPostThumb] = useState<string | null>(null);
@@ -234,8 +237,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         if (!c) return setNotFound(true);
         setName(c.name);
         setSelectedAccountId(c.instagramAccountId);
+        const hasCommentTrigger =
+          c.matchAnyPost || c.pendingNextReel || Boolean(c.postId);
         setTriggerScope(
-          c.matchStoryReplies
+          c.matchStoryReplies && !hasCommentTrigger
             ? "story"
             : c.matchAnyPost
               ? "any"
@@ -243,6 +248,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 ? "next"
                 : "specific"
         );
+        setStoryAlso(c.matchStoryReplies && hasCommentTrigger);
         setPostId(c.postId);
         setPostUrl(c.postUrl);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
@@ -385,7 +391,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       postUrl: triggerScope === "specific" ? postUrl : null,
       matchAnyPost: triggerScope === "any",
       pendingNextReel: triggerScope === "next",
-      matchStoryReplies: isStory,
+      matchStoryReplies: isStory || storyAlso,
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmMessage,
@@ -671,10 +677,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           >
             replies to a story
           </Radio>
-          {triggerScope === "story" && (
+          {triggerScope !== "story" && (
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+              <span className="text-sm text-foreground">
+                also fire on story replies
+              </span>
+              <Toggle
+                on={storyAlso}
+                onToggle={() => setStoryAlso(!storyAlso)}
+              />
+            </div>
+          )}
+          {(triggerScope === "story" || storyAlso) && (
             <p className="text-xs text-muted">
-              Fires on replies to any of your stories. Only keyword matches are
-              logged — the reply text itself is never stored.
+              Story replies: fires when someone replies to any of your stories
+              with the keyword. Only matches are logged — the reply text itself
+              is never stored.
             </p>
           )}
         </Section>

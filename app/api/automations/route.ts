@@ -322,24 +322,22 @@ export async function POST(request: NextRequest) {
 
   const { trackedDestinationUrl } = parsed.data;
 
-  const { matchStoryReplies, matchAnyWord } = parsed.data;
-  // The triggers are mutually exclusive; story replies win so a story
-  // campaign can never also fire on comments.
-  const matchAnyPost = matchStoryReplies ? false : parsed.data.matchAnyPost;
-  const pendingNextReel = matchStoryReplies
-    ? false
-    : parsed.data.pendingNextReel;
-  // A post is only stored for the "specific post" trigger.
+  const { matchStoryReplies, matchAnyWord, matchAnyPost, pendingNextReel } =
+    parsed.data;
+  // Story replies can combine with any comment trigger (one campaign, both
+  // channels). A post is only stored for the "specific post" trigger.
   const isSpecificPost =
-    !pendingNextReel && !matchAnyPost && !matchStoryReplies;
-  // A story-reply campaign answers a DM: there is no comment to reply to
-  // publicly and no opening-DM button flow, so both are forced off.
-  const openingDmEnabled = matchStoryReplies
-    ? false
-    : parsed.data.openingDmEnabled;
-  const publicReplyEnabled = matchStoryReplies
-    ? false
-    : parsed.data.publicReplyEnabled;
+    !pendingNextReel && !matchAnyPost && Boolean(parsed.data.postId);
+  const hasCommentTrigger = matchAnyPost || pendingNextReel || isSpecificPost;
+  // A story-only campaign answers a DM: there is no comment to reply to
+  // publicly and no opening-DM button flow, so both are forced off. Combined
+  // campaigns keep them — they only apply to the comment leg.
+  const openingDmEnabled = hasCommentTrigger
+    ? parsed.data.openingDmEnabled
+    : false;
+  const publicReplyEnabled = hasCommentTrigger
+    ? parsed.data.publicReplyEnabled
+    : false;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -470,13 +468,15 @@ export async function PATCH(request: NextRequest) {
     automationData.postId = null;
     automationData.postUrl = null;
   }
-  // Story-reply campaigns carry no post and have no public-reply or
-  // opening-DM legs (they answer a DM, not a comment).
-  if (automationData.matchStoryReplies === true) {
-    automationData.postId = null;
-    automationData.postUrl = null;
-    automationData.matchAnyPost = false;
-    automationData.pendingNextReel = false;
+  // A story-only campaign (no comment trigger left) has no public-reply or
+  // opening-DM legs — it answers a DM, not a comment. Combined campaigns keep
+  // them for their comment leg.
+  if (
+    automationData.matchStoryReplies === true &&
+    automationData.matchAnyPost !== true &&
+    automationData.pendingNextReel !== true &&
+    !automationData.postId
+  ) {
     automationData.openingDmEnabled = false;
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;

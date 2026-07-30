@@ -140,15 +140,21 @@ export default function CampaignDetailPage() {
         : [];
   const hasLink = Boolean(campaign.trackedLinks?.[0]?.destinationUrl);
 
+  const commentTrigger = campaign.matchAnyPost
+    ? "Any post or reel"
+    : campaign.pendingNextReel
+      ? "Your next reel"
+      : campaign.postId
+        ? "A specific post or reel"
+        : null;
+  const storyOnly = campaign.matchStoryReplies && !commentTrigger;
   const trigger = campaign.matchStoryReplies
-    ? "Story replies"
-    : campaign.matchAnyPost
-      ? "Any post or reel"
-      : campaign.pendingNextReel
-        ? "Your next reel"
-        : "A specific post or reel";
+    ? commentTrigger
+      ? `${commentTrigger} + story replies`
+      : "Story replies"
+    : commentTrigger ?? "A specific post or reel";
   const matchText = campaign.matchAnyWord
-    ? campaign.matchStoryReplies
+    ? storyOnly
       ? "Any reply"
       : "Any comment"
     : campaign.keywords.join(", ") || "No keywords";
@@ -196,7 +202,7 @@ export default function CampaignDetailPage() {
               />
             ) : (
               <div className="grid h-14 w-14 place-items-center rounded bg-surface-hover text-[10px] text-muted">
-                {campaign.matchStoryReplies
+                {storyOnly
                   ? "Story"
                   : campaign.matchAnyPost || campaign.pendingNextReel
                     ? "Any"
