@@ -85,6 +85,8 @@ services:
     init: true
     env_file:
       - .env
+    environment:
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS:?AUTH_ALLOWED_EMAILS is required}
     depends_on:
       migrate:
         condition: service_completed_successfully
