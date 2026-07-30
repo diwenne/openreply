@@ -18,6 +18,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // TOTP second factor. The secret is encrypted with ENCRYPTION_KEY; backup
+  // codes are stored as SHA-256 hashes and consumed on use.
+  totpSecret      String?
+  totpEnabledAt   DateTime?
+  totpBackupCodes String[]  @default([])
+
   accounts          Account[]
   sessions          Session[]
   ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")

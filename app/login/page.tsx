@@ -1,4 +1,7 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { signIn } from "@/lib/auth";
+import { reserveLoginAttempt } from "@/lib/utils/login-rate-limiter";
 import { getCampaignTemplate } from "@/lib/templates/campaign-templates";
 
 export const metadata = {
@@ -13,10 +16,17 @@ export default async function LoginPage({
     checkEmail?: string;
     callbackUrl?: string;
     template?: string;
+    error?: string;
   }>;
 }) {
   const params = await searchParams;
   const checkEmail = params.checkEmail === "1";
+  const errorMessage =
+    params.error === "Throttled"
+      ? "Too many attempts — try again in a few minutes."
+      : params.error
+        ? "Sign-in isn't available for this address."
+        : null;
   const selectedTemplate = getCampaignTemplate(params.template);
   const templateCallbackUrl = selectedTemplate
     ? `/campaigns/new?template=${selectedTemplate.slug}`
@@ -25,8 +35,23 @@ export default async function LoginPage({
 
   async function sendMagicLink(formData: FormData) {
     "use server";
+    const email = String(formData.get("email") ?? "")
+      .trim()
+      .toLowerCase();
+
+    // The form posts through a server action, not /api/auth — throttle here
+    // too (the API route has its own limiter for direct calls).
+    const requestHeaders = await headers();
+    const ip =
+      (requestHeaders.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+      null;
+    const verdict = await reserveLoginAttempt(ip, email || null);
+    if (!verdict.allowed) {
+      redirect("/login?error=Throttled");
+    }
+
     await signIn("resend", {
-      email: String(formData.get("email") ?? ""),
+      email,
       redirectTo: callbackUrl,
     });
   }
@@ -67,6 +92,11 @@ export default async function LoginPage({
             </div>
           ) : (
             <form action={sendMagicLink} className="space-y-5">
+              {errorMessage && (
+                <p className="text-sm text-error" role="alert">
+                  {errorMessage}
+                </p>
+              )}
               <div className="space-y-2">
                 <label
                   htmlFor="email"

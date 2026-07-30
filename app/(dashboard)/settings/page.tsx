@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
+import TotpSetupCard from "@/components/totp-setup-card";
 
 interface SettingsData {
   workspace: {
@@ -328,6 +329,8 @@ export default function SettingsPage() {
           </span>
         </div>
       </section>
+
+      <TotpSetupCard />
     </div>
   );
 }

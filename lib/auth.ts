@@ -2,6 +2,7 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Resend from "next-auth/providers/resend";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
+import { isTotpSatisfied } from "@/lib/totp";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
@@ -41,6 +42,9 @@ export const authConfig = {
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
+        session.user.totpEnabled = Boolean(
+          (user as unknown as { totpEnabledAt?: Date | null }).totpEnabledAt
+        );
       }
       return session;
     },
@@ -67,7 +71,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await auth();
-  return session?.user?.id ?? null;
+  const userId = session?.user?.id ?? null;
+  if (!userId) return null;
+
+  // Single choke point for every protected API: once 2FA is enabled, a
+  // session without the bound TOTP proof is treated as unauthenticated —
+  // the dashboard pages redirect to /totp, direct API calls get a 401.
+  if (session?.user?.totpEnabled && !(await isTotpSatisfied())) {
+    return null;
+  }
+
+  return userId;
 }
 
 export async function getCurrentWorkspaceId(): Promise<string | null> {
