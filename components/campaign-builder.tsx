@@ -374,10 +374,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     if (matchMode === "specific" && keywords.length === 0)
       return setError("Add at least one keyword, or switch to any word.");
     if (!dmMessage.trim()) return setError("Add the DM with the link.");
-    // Story campaigns have no opening-DM or public-reply legs; hidden state is
-    // simply not sent.
+    // The public reply needs a comment to reply to — comment scopes only. The
+    // opening DM applies to both legs (postback button in a DM for stories).
     const isStory = triggerScope === "story";
-    const sendOpeningDm = !isStory && openingDmEnabled;
+    const sendOpeningDm = openingDmEnabled;
     const sendPublicReply = !isStory && publicReplyEnabled;
     if (sendOpeningDm && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
@@ -788,7 +788,6 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </Section>
 
-        {triggerScope !== "story" && (
         <Section title="They will get">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -819,13 +818,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             )}
           </div>
         </Section>
-        )}
 
-        <Section
-          title={
-            triggerScope === "story" ? "They will get" : "And then, they will get"
-          }
-        >
+        <Section title="And then, they will get">
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">a DM with a link</span>
             <textarea
@@ -883,7 +877,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             sampleComment={keywords[0] ?? ""}
             publicReplyEnabled={triggerScope !== "story" && publicReplyEnabled}
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
-            openingDmEnabled={triggerScope !== "story" && openingDmEnabled}
+            openingDmEnabled={openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
             revealMessage={dmMessage}

@@ -15,6 +15,7 @@ import {
   MetaApiError,
   sendCommentReply,
   sendDirectMessage,
+  sendDirectMessageWithButton,
   sendDirectMessageWithLinkButton,
   sendPrivateReply,
   sendPrivateReplyWithButton,
@@ -815,10 +816,31 @@ async function processStoryReply(
     }
   }
 
+  // With an opening DM, the reply is a postback-button message; tapping it
+  // delivers the reveal (see processPostback — same flow as comment campaigns).
+  const useOpeningDm =
+    automation.openingDmEnabled &&
+    Boolean(automation.openingDmMessage) &&
+    Boolean(automation.openingDmButtonLabel);
+
   const primaryLink = automation.trackedLinks[0];
 
   try {
-    if (primaryLink) {
+    if (useOpeningDm) {
+      const openingText = renderMessageWithTracking({
+        message: automation.openingDmMessage as string,
+        commenterName,
+        trackedLinks: [],
+      });
+      await sendDirectMessageWithButton(
+        accessToken,
+        automation.instagramAccount.instagramId,
+        senderId,
+        openingText,
+        automation.openingDmButtonLabel as string,
+        `reveal:${automation.id}`
+      );
+    } else if (primaryLink) {
       // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =
         renderMessageWithoutLink({

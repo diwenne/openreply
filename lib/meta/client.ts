@@ -271,6 +271,49 @@ export async function sendDirectMessage(
 }
 
 /**
+ * Send a direct message as a button template with a single postback button —
+ * the opening DM for story-reply campaigns. Tapping the button fires a
+ * postback (same reveal flow as comment campaigns' opening DM).
+ */
+export async function sendDirectMessageWithButton(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  text: string,
+  buttonTitle: string,
+  payload: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: userId },
+        message: {
+          attachment: {
+            type: "template",
+            payload: {
+              template_type: "button",
+              // Button template text is capped at 640 chars by Meta.
+              text: text.slice(0, 640),
+              buttons: [
+                { type: "postback", title: buttonTitle.slice(0, 20), payload },
+              ],
+            },
+          },
+        },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/**
  * Send a direct message as a button template with a single web_url button —
  * the reveal message plus a tappable link button (cleaner than an inline URL).
  */

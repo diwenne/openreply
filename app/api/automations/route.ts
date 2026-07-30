@@ -329,12 +329,9 @@ export async function POST(request: NextRequest) {
   const isSpecificPost =
     !pendingNextReel && !matchAnyPost && Boolean(parsed.data.postId);
   const hasCommentTrigger = matchAnyPost || pendingNextReel || isSpecificPost;
-  // A story-only campaign answers a DM: there is no comment to reply to
-  // publicly and no opening-DM button flow, so both are forced off. Combined
-  // campaigns keep them — they only apply to the comment leg.
-  const openingDmEnabled = hasCommentTrigger
-    ? parsed.data.openingDmEnabled
-    : false;
+  // The public reply needs a comment to reply to, so it is comment-leg only.
+  // The opening DM works on both legs (postback button in a DM for stories).
+  const openingDmEnabled = parsed.data.openingDmEnabled;
   const publicReplyEnabled = hasCommentTrigger
     ? parsed.data.publicReplyEnabled
     : false;
@@ -468,18 +465,14 @@ export async function PATCH(request: NextRequest) {
     automationData.postId = null;
     automationData.postUrl = null;
   }
-  // A story-only campaign (no comment trigger left) has no public-reply or
-  // opening-DM legs — it answers a DM, not a comment. Combined campaigns keep
-  // them for their comment leg.
+  // A story-only campaign (no comment trigger left) has no public-reply leg —
+  // there is no comment to reply to. The opening DM works on both legs.
   if (
     automationData.matchStoryReplies === true &&
     automationData.matchAnyPost !== true &&
     automationData.pendingNextReel !== true &&
     !automationData.postId
   ) {
-    automationData.openingDmEnabled = false;
-    automationData.openingDmMessage = null;
-    automationData.openingDmButtonLabel = null;
     automationData.publicReplyEnabled = false;
   }
   // Keep the public-reply variations list and the legacy single field in sync.
