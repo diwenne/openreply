@@ -31,4 +31,9 @@ describe("authentication email allowlist", () => {
     ).toBe(false);
     expect(isAuthEmailAllowed(null, "owner@example.com")).toBe(false);
   });
+
+  it("fails closed when a configured allowlist contains only separators or whitespace", () => {
+    expect(isAuthEmailAllowed("stranger@example.com", "  ")).toBe(false);
+    expect(isAuthEmailAllowed("stranger@example.com", " , ")).toBe(false);
+  });
 });

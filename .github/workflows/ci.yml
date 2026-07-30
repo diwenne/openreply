@@ -23,7 +23,7 @@ jobs:
         run: npm ci
 
       - name: Audit production dependencies
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Generate Prisma client
         run: npm run db:generate
