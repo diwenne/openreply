@@ -85,8 +85,6 @@ services:
     init: true
     env_file:
       - .env
-    environment:
-      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS:?AUTH_ALLOWED_EMAILS is required}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -114,6 +112,8 @@ services:
     init: true
     env_file:
       - .env
+    environment:
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS:?AUTH_ALLOWED_EMAILS is required}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -123,6 +123,7 @@ services:
       - "127.0.0.1:${OPENREPLY_PORT:-3048}:3000"
     networks:
       - backend
+      - edge
     healthcheck:
       test:
         [
@@ -153,3 +154,8 @@ networks:
     ipam:
       config:
         - subnet: 10.250.48.0/24
+  edge:
+    name: openreply-edge
+    ipam:
+      config:
+        - subnet: 10.250.49.0/24
