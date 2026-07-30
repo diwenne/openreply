@@ -1,0 +1,8 @@
+[Unit]
+Description=Check the public OpenReply health endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openreply/deploy/healthcheck.sh

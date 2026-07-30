@@ -1,0 +1,10 @@
+[Unit]
+Description=Monitor OpenReply every five minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
