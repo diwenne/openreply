@@ -8,8 +8,10 @@ OpenReply runs as four isolated services on `yoyaku-automation`:
 - dedicated Redis 7
 
 The public edge is `https://openreply.yoyaku.fr` through nginx. PostgreSQL and
-Redis have no host ports. Persistent data and backups live under
-`/mnt/data/openreply`.
+Redis have no host ports. Persistent data and local backups live under
+`/mnt/data/openreply`. Daily PostgreSQL dumps are retained locally for 14 days
+and replicated to `yoyaku-hetzner:/opt/backups/openreply-automation` with
+30-day retention so the recovery copy does not share the application host.
 
 ## Deploy
 

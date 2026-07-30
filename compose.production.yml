@@ -92,6 +92,7 @@ services:
         condition: service_healthy
     networks:
       - backend
+      - edge
     security_opt:
       - no-new-privileges:true
     cap_drop:
