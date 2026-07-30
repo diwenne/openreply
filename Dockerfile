@@ -11,6 +11,10 @@ FROM base AS dependencies
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
+FROM base AS production-dependencies
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
 FROM dependencies AS builder
 COPY . .
 
@@ -50,7 +54,7 @@ ENV NODE_ENV=production
 RUN groupadd --system --gid 1001 openreply \
     && useradd --system --uid 1001 --gid openreply --home-dir /app openreply
 
-COPY --from=dependencies --chown=openreply:openreply /app/node_modules ./node_modules
+COPY --from=production-dependencies --chown=openreply:openreply /app/node_modules ./node_modules
 COPY --chown=openreply:openreply . .
 COPY --from=builder --chown=openreply:openreply /app/app/generated ./app/generated
 

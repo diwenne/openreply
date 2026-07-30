@@ -11,12 +11,11 @@ export function isAuthEmailAllowed(
   email: string | null | undefined,
   rawAllowlist?: string
 ): boolean {
-  const allowlist = parseAuthEmailAllowlist(rawAllowlist);
-
   // Preserve upstream's public-signup behavior unless the self-hoster opts in
-  // to a restriction.
-  if (allowlist.size === 0) return true;
+  // to a restriction. A present but malformed value fails closed.
+  if (rawAllowlist === undefined || rawAllowlist === "") return true;
   if (!email) return false;
 
+  const allowlist = parseAuthEmailAllowlist(rawAllowlist);
   return allowlist.has(email.trim().toLowerCase());
 }
