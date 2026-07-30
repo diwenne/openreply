@@ -3,6 +3,9 @@
 FROM node:22.22.0-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates openssl \
+    && apt-get clean
 
 FROM base AS dependencies
 COPY package.json package-lock.json ./
