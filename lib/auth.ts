@@ -6,15 +6,38 @@ import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
+/**
+ * Emails allowed to sign in — or even to receive a magic link. A missing or
+ * empty ALLOWED_LOGIN_EMAILS refuses EVERYONE (fail closed): this instance is
+ * single-operator, and an absent variable must never mean open signup.
+ */
+function allowedLoginEmails(): Set<string> {
+  return new Set(
+    (process.env.ALLOWED_LOGIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 export const authConfig = {
   adapter: PrismaAdapter(prisma as unknown as AdapterPrismaClient),
   providers: [
     Resend({
       apiKey: process.env.RESEND_API_KEY ?? "missing-resend-api-key",
       from: process.env.EMAIL_FROM ?? "OpenReply <login@example.com>",
+      // A magic link is a bearer credential sitting in an inbox — 15 minutes
+      // of validity instead of the 24-hour default.
+      maxAge: 15 * 60,
     }),
   ],
   callbacks: {
+    // Runs both when the magic link is REQUESTED (nothing is sent for a
+    // refused address) and when it is CLICKED.
+    async signIn({ user }) {
+      const address = user?.email?.toLowerCase();
+      return Boolean(address && allowedLoginEmails().has(address));
+    },
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
