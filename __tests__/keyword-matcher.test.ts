@@ -132,3 +132,53 @@ describe("matchKeywords — edge cases", () => {
     expect(result.matched).toBe(true);
   });
 });
+
+describe("matchKeywords — accent insensitivity (French)", () => {
+  it("should match an accented keyword against unaccented text", () => {
+    expect(matchKeywords("je veux la priere", ["prière"], true).matched).toBe(true);
+  });
+
+  it("should match an unaccented keyword against accented text", () => {
+    expect(matchKeywords("la PRIÈRE svp", ["priere"], true).matched).toBe(true);
+  });
+
+  it("should match accents + case combined", () => {
+    expect(matchKeywords("MAISON", ["maïson"], true).matched).toBe(true);
+    expect(matchKeywords("Bénédiction reçue", ["benediction"], true).matched).toBe(true);
+  });
+
+  it("should fold cedilla and circumflex", () => {
+    expect(matchKeywords("un garcon", ["garçon"], true).matched).toBe(true);
+    expect(matchKeywords("la fête", ["fete"], true).matched).toBe(true);
+  });
+});
+
+describe("matchKeywords — singular/plural tolerance", () => {
+  it("should match a plural text with a singular keyword", () => {
+    expect(matchKeywords("je veux les MAISONS", ["maison"], true).matched).toBe(true);
+  });
+
+  it("should match a singular text with a plural keyword", () => {
+    expect(matchKeywords("la maison", ["maisons"], true).matched).toBe(true);
+  });
+
+  it("should handle -x plurals both ways", () => {
+    expect(matchKeywords("tous mes voeux", ["voeu"], true).matched).toBe(true);
+    expect(matchKeywords("un voeu", ["voeux"], true).matched).toBe(true);
+  });
+
+  it("should still match words that naturally end in s", () => {
+    expect(matchKeywords("le paradis", ["paradis"], true).matched).toBe(true);
+  });
+
+  it("should not strip short keywords into loose matches", () => {
+    // "os" must not become "o" and match anything.
+    expect(matchKeywords("o la la", ["os"], true).matched).toBe(false);
+    expect(matchKeywords("un os", ["os"], true).matched).toBe(true);
+  });
+
+  it("should apply plural tolerance to every word of a phrase (whole-word)", () => {
+    expect(matchKeywords("mes cartes cadeaux", ["carte cadeau"], true).matched).toBe(true);
+    expect(matchKeywords("ma carte cadeau", ["cartes cadeaux"], true).matched).toBe(true);
+  });
+});
