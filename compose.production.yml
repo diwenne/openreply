@@ -150,3 +150,6 @@ networks:
   backend:
     name: openreply-backend
     internal: true
+    ipam:
+      config:
+        - subnet: 10.250.48.0/24
