@@ -3,11 +3,12 @@ import { prisma } from "@/lib/db/client";
 import { getDMQueue } from "@/lib/queue/client";
 import {
   parseCommentEvents,
+  parseMessageEvents,
   parsePostbackEvents,
   parseReadEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
-import { POSTBACK_JOB_NAME } from "@/lib/queue/client";
+import { MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from "@/lib/queue/client";
 import { Prisma } from "@/app/generated/prisma/client";
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -135,6 +136,43 @@ export async function POST(request: NextRequest) {
           ).replace(/:/g, "_")}`,
         }
       );
+    }
+
+    // Inbound DMs → keyword-triggered autoreply.
+    const messageEvents = parseMessageEvents(
+      payload as Parameters<typeof parseMessageEvents>[0]
+    );
+
+    for (const event of messageEvents) {
+      const account = await prisma.instagramAccount.findUnique({
+        where: { instagramId: event.instagramAccountId },
+        select: { workspaceId: true },
+      });
+
+      await queue.add(
+        MESSAGE_JOB_NAME,
+        {
+          instagramAccountId: event.instagramAccountId,
+          messageId: event.messageId,
+          messageText: event.messageText,
+          senderId: event.senderId,
+        },
+        {
+          // Message ids can contain characters BullMQ rejects in a job id
+          // (":" in particular), so normalize them out.
+          jobId: `message_${event.instagramAccountId}_${event.messageId.replace(
+            /[^A-Za-z0-9_-]/g,
+            "_"
+          )}`,
+        }
+      );
+
+      if (account) {
+        await prisma.webhookEvent.update({
+          where: { id: webhookEvent.id },
+          data: { workspaceId: account.workspaceId },
+        });
+      }
     }
 
     // If a user reads the opening DM and never taps the button, deliver the

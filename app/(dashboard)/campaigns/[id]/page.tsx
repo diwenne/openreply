@@ -22,6 +22,7 @@ interface Campaign {
   matchAnyPost: boolean;
   keywords: string[];
   matchAnyWord: boolean;
+  dmTriggerEnabled: boolean;
   dmMessage: string;
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
@@ -211,6 +212,12 @@ export default function CampaignDetailPage() {
 
         <Summary title="And this comment has">
           <FieldBox>{matchText}</FieldBox>
+          {campaign.dmTriggerEnabled && (
+            <p className="text-xs text-muted">
+              Also replies when someone DMs{" "}
+              {campaign.matchAnyWord ? "anything" : "these words"}.
+            </p>
+          )}
           {publicReplies.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs text-muted">Public reply under the post</p>
@@ -339,6 +346,7 @@ export default function CampaignDetailPage() {
             postThumb={postThumb}
             caption=""
             sampleComment={campaign.matchAnyWord ? "nice!" : campaign.keywords[0] ?? "LINK"}
+            dmTriggerEnabled={campaign.dmTriggerEnabled}
             publicReplyEnabled={campaign.publicReplyEnabled}
             publicReplyMessage={publicReplies[0] ?? ""}
             openingDmEnabled={campaign.openingDmEnabled}

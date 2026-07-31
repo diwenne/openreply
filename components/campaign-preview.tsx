@@ -10,7 +10,7 @@
  * the identical frame so switching tabs never resizes the phone.
  */
 
-export type PreviewTab = "post" | "comments" | "dm";
+export type PreviewTab = "post" | "comments" | "dm" | "dmTrigger";
 
 interface CampaignPreviewProps {
   tab: PreviewTab;
@@ -20,6 +20,9 @@ interface CampaignPreviewProps {
   postThumb: string | null;
   caption: string;
   sampleComment: string;
+  // The DM keyword trigger gets its own thread: the user messages first, and
+  // the opening DM is skipped because the conversation is already open.
+  dmTriggerEnabled: boolean;
   publicReplyEnabled: boolean;
   publicReplyMessage: string;
   openingDmEnabled: boolean;
@@ -318,6 +321,7 @@ function DmScreen({
   followUpMessage,
   followUpDelayMinutes = 0,
   linkUrl,
+  inboundMessage,
 }: {
   username: string;
   avatarUrl: string | null;
@@ -336,6 +340,8 @@ function DmScreen({
   followUpEnabled: boolean;
   followUpMessage: string;
   followUpDelayMinutes?: number;
+  // Present on the keyword-trigger thread: the DM the user sends to start it.
+  inboundMessage?: string;
 }) {
   return (
     <div className="flex h-full flex-col text-white">
@@ -351,6 +357,13 @@ function DmScreen({
       </div>
 
       <div className="flex-1 space-y-3 px-3 py-4">
+        {inboundMessage !== undefined && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
+              {inboundMessage || "their message"}
+            </div>
+          </div>
+        )}
         {openingDmEnabled && (
           <>
             <div className="flex items-end gap-2">
@@ -465,12 +478,20 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
     { key: "post", label: "Post" },
     { key: "comments", label: "Comments" },
     { key: "dm", label: "DM" },
+    ...(props.dmTriggerEnabled
+      ? [{ key: "dmTrigger" as const, label: "DM trigger" }]
+      : []),
   ];
+
+  // The DM-trigger tab disappears when the trigger is switched off; fall back
+  // to the comment thread rather than rendering an empty phone.
+  const activeTab: PreviewTab =
+    tab === "dmTrigger" && !props.dmTriggerEnabled ? "dm" : tab;
 
   return (
     <div className="flex flex-col items-center gap-5">
       <Phone>
-        {tab === "post" && (
+        {activeTab === "post" && (
           <PostScreen
             username={props.username}
             avatarUrl={props.avatarUrl}
@@ -478,7 +499,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             caption={props.caption}
           />
         )}
-        {tab === "comments" && (
+        {activeTab === "comments" && (
           <CommentsScreen
             username={props.username}
             avatarUrl={props.avatarUrl}
@@ -487,7 +508,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             publicReplyMessage={props.publicReplyMessage}
           />
         )}
-        {tab === "dm" && (
+        {activeTab === "dm" && (
           <DmScreen
             username={props.username}
             avatarUrl={props.avatarUrl}
@@ -508,6 +529,29 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             linkUrl={props.linkUrl}
           />
         )}
+        {activeTab === "dmTrigger" && (
+          <DmScreen
+            username={props.username}
+            avatarUrl={props.avatarUrl}
+            // The user opened the conversation, so no opening DM is sent.
+            openingDmEnabled={false}
+            openingDmMessage=""
+            openingDmButtonLabel=""
+            revealMessage={props.revealMessage}
+            hasLink={props.hasLink}
+            linkButtonLabel={props.linkButtonLabel}
+            hasSecondLink={props.hasSecondLink}
+            secondLinkButtonLabel={props.secondLinkButtonLabel}
+            requireFollow={props.requireFollow}
+            followPromptMessage={props.followPromptMessage}
+            followPromptButtonLabel={props.followPromptButtonLabel}
+            followUpEnabled={props.followUpEnabled}
+            followUpMessage={props.followUpMessage}
+            followUpDelayMinutes={props.followUpDelayMinutes}
+            linkUrl={props.linkUrl}
+            inboundMessage={props.sampleComment}
+          />
+        )}
       </Phone>
 
       <div className="inline-flex rounded-full bg-surface p-1">
@@ -517,7 +561,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             type="button"
             onClick={() => onTabChange(t.key)}
             className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-              tab === t.key
+              activeTab === t.key
                 ? "bg-background font-medium text-foreground ring-1 ring-accent/40"
                 : "text-muted hover:text-foreground"
             }`}

@@ -54,13 +54,24 @@ export interface ProcessFollowUpJob {
   commenterName?: string | null;
 }
 
+// An inbound DM from a user. Campaigns with `dmTriggerEnabled` whose keywords
+// match the text reply to the sender.
+export interface ProcessMessageJob {
+  instagramAccountId: string;
+  messageId: string;
+  messageText: string;
+  senderId: string;
+}
+
 export type DmQueueJob =
   | ProcessCommentJob
   | ProcessPostbackJob
-  | ProcessFollowUpJob;
+  | ProcessFollowUpJob
+  | ProcessMessageJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const FOLLOWUP_JOB_NAME = "process-followup";
+export const MESSAGE_JOB_NAME = "process-message";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

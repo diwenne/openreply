@@ -112,6 +112,7 @@ vi.mock("@/lib/queue/client", () => ({
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
   FOLLOWUP_JOB_NAME: "process-followup",
+  MESSAGE_JOB_NAME: "process-message",
 }));
 
 vi.mock("bullmq", () => {
@@ -892,6 +893,193 @@ describe("DM Worker — one private reply per comment", () => {
     expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "SENT" }),
+      })
+    );
+  });
+});
+
+describe("DM Worker — DM keyword trigger", () => {
+  const dmTriggerAutomation = {
+    ...mockAutomation,
+    dmTriggerEnabled: true,
+    requireFollow: false,
+    followPromptMessage: null,
+    followPromptButtonLabel: null,
+  };
+
+  function createMockMessageJob(data: Record<string, unknown> = {}) {
+    return {
+      name: "process-message",
+      data: {
+        instagramAccountId: "ig_456",
+        messageId: "mid_abc",
+        messageText: "can I get the LINK?",
+        senderId: "commenter_999",
+        ...data,
+      },
+      id: "message_job_001",
+      attemptsMade: 0,
+    };
+  }
+
+  beforeEach(() => {
+    mockPrisma.automation.findMany.mockResolvedValue([dmTriggerAutomation]);
+  });
+
+  it("should reply to a DM whose text matches the campaign keywords", async () => {
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockPrisma.automation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          dmTriggerEnabled: true,
+          isActive: true,
+        }),
+      })
+    );
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Hey commenter_user! Here is the link: https://example.com"
+    );
+    // Never a private reply — there is no comment to reply to.
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+
+  it("should not reply when the DM text matches no keyword", async () => {
+    mockMatchKeywords.mockReturnValue({ matched: false, matchedKeyword: null });
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob({ messageText: "hello there" }));
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithLinkButton).not.toHaveBeenCalled();
+  });
+
+  it("should log the reply against the inbound message id for dedup", async () => {
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          automationId_commentId: {
+            automationId: "auto_789",
+            commentId: "dm:mid_abc",
+          },
+        },
+        create: expect.objectContaining({
+          commenterId: "commenter_999",
+          commentText: "can I get the LINK?",
+          matchedKeyword: "LINK",
+          status: "SENT",
+        }),
+      })
+    );
+  });
+
+  it("should not re-send when this message was already answered", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({ status: "SENT" });
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
+  it("should send the link as buttons when the campaign has tracked links", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...dmTriggerAutomation,
+        linkButtonLabel: "Get it",
+        trackedLinks: [
+          {
+            slug: "abc123",
+            label: "Get it",
+            destinationUrl: "https://example.com/offer",
+          },
+        ],
+      },
+    ]);
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockSendDirectMessageWithLinkButton).toHaveBeenCalled();
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("should send the follow prompt instead of the link to a non-follower", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...dmTriggerAutomation, requireFollow: true },
+    ]);
+    mockGetUserFollowStatus.mockResolvedValue(false);
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      expect.any(String),
+      "I'm following ✅",
+      "followcheck:auto_789"
+    );
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("should send the link when follow status cannot be verified", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...dmTriggerAutomation, requireFollow: true },
+    ]);
+    mockGetUserFollowStatus.mockResolvedValue(null);
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+  });
+
+  it("should skip and log when the workspace is over its monthly limit", async () => {
+    mockReserveWorkspaceDMSend.mockResolvedValue({
+      allowed: false,
+      reserved: false,
+      remaining: 0,
+      limit: 2000,
+      periodStart: usagePeriodStart,
+    });
+
+    const processor = getProcessor();
+    await processor(createMockMessageJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "SKIPPED_PLAN_LIMIT" }),
+      })
+    );
+  });
+
+  it("should release the usage reservation and rethrow when the send fails", async () => {
+    mockSendDirectMessage.mockRejectedValue(new Error("Meta is down"));
+
+    const processor = getProcessor();
+    await expect(processor(createMockMessageJob())).rejects.toThrow(
+      "Meta is down"
+    );
+
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
+      "workspace_123",
+      usagePeriodStart
+    );
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "FAILED" }),
       })
     );
   });

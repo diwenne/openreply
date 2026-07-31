@@ -65,7 +65,22 @@ interface WebhookEntry {
     recipient?: { id?: string };
     postback?: { mid?: string; title?: string; payload?: string };
     read?: { watermark?: number; seq?: number };
+    message?: {
+      mid?: string;
+      text?: string;
+      is_echo?: boolean;
+      is_deleted?: boolean;
+      is_unsupported?: boolean;
+      attachments?: Array<{ type?: string }>;
+    };
   }>;
+}
+
+export interface WebhookMessageEvent {
+  instagramAccountId: string;
+  messageId: string;
+  messageText: string;
+  senderId: string;
 }
 
 export interface WebhookPostbackEvent {
@@ -153,6 +168,52 @@ export function parsePostbackEvents(
         userId,
         payload: postbackPayload,
         mid: messaging.postback?.mid,
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Parse inbound Instagram DMs out of a webhook payload. These drive the
+ * keyword-triggered autoreply: a user messages the account, and a campaign
+ * with `dmTriggerEnabled` whose keywords match the text replies to them.
+ *
+ * Echoes (messages the account itself sent, including our own autoreplies),
+ * deletions, and attachment-only messages with no text are dropped here so
+ * the worker never sees them — an echo would otherwise let an autoreply
+ * containing its own keyword trigger itself.
+ */
+export function parseMessageEvents(
+  payload: WebhookPayload
+): WebhookMessageEvent[] {
+  const events: WebhookMessageEvent[] = [];
+
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message) continue;
+      if (message.is_echo || message.is_deleted || message.is_unsupported) {
+        continue;
+      }
+
+      const text = message.text?.trim();
+      const messageId = message.mid;
+      const senderId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+
+      if (!text || !messageId || !senderId || !accountId) continue;
+      // Ignore anything the connected account sent to itself.
+      if (senderId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        messageId,
+        messageText: text,
+        senderId,
       });
     }
   }
