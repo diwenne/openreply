@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { getUserMedia, type InstagramMedia } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
+import { captionMatchesCatno } from "@/lib/release-sync/shop-feed";
 
 /**
  * Binds "next reel" campaigns to a real post.
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
     if (!account?.accessToken) continue;
 
     let reels: InstagramMedia[];
+    let allMedia: InstagramMedia[];
     try {
       const token = decryptToken(account.accessToken);
       const media = await getUserMedia(token, 25);
@@ -63,6 +65,10 @@ export async function GET(request: NextRequest) {
           (a, b) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
+      allMedia = [...media].sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
     } catch (err) {
       failures.push(account.id);
       console.error("[attach-next-reel] media fetch failed", account.id, err);
@@ -70,17 +76,28 @@ export async function GET(request: NextRequest) {
     }
 
     for (const automation of automations) {
+      // Deterministic binding first: a campaign carrying a catno binds to the
+      // earliest media (any type, square posts included) whose caption
+      // contains #<catno>. Without a match it falls back to next-reel.
+      const catnoMedia = automation.catnoTag
+        ? allMedia.find(
+            (m) =>
+              new Date(m.timestamp) > automation.createdAt &&
+              captionMatchesCatno(m.caption, automation.catnoTag as string)
+          )
+        : undefined;
+
       // The "next" reel = the earliest one posted after the campaign was created.
-      const nextReel = reels.find(
-        (reel) => new Date(reel.timestamp) > automation.createdAt
-      );
-      if (!nextReel) continue;
+      const target =
+        catnoMedia ??
+        reels.find((reel) => new Date(reel.timestamp) > automation.createdAt);
+      if (!target) continue;
 
       await prisma.automation.update({
         where: { id: automation.id },
         data: {
-          postId: nextReel.id,
-          postUrl: nextReel.permalink ?? null,
+          postId: target.id,
+          postUrl: target.permalink ?? null,
           pendingNextReel: false,
         },
       });

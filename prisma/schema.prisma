@@ -175,6 +175,10 @@ model Automation {
   postId         String?
   postUrl        String?
   pendingNextReel Boolean @default(false)
+  /// Catalogue number for deterministic post binding: when set, the attach
+  /// cron binds this campaign to the first media whose caption contains
+  /// #<catnoTag> (any media type), falling back to next-reel behavior.
+  catnoTag       String?
   matchAnyPost   Boolean @default(false)
   keywords       String[]
   matchAnyWord   Boolean @default(false)
@@ -378,4 +382,29 @@ enum OperationalEventLevel {
   INFO
   WARNING
   ERROR
+}
+
+/// One row per (sku, eventType) the release sync has already turned into a
+/// campaign (or deliberately skipped). Idempotence is structural: replays of
+/// the same shop snapshot can never create duplicates.
+model ReleaseSyncEvent {
+  id          String   @id @default(cuid())
+  sku         String
+  eventType   String
+  outcome     String
+  detail      String?
+  automationId String?
+  processedAt DateTime @default(now())
+
+  @@unique([sku, eventType])
+}
+
+/// Last stock status seen per exclusive SKU, so status flips (preorder ->
+/// in stock, out of stock -> in stock) can be derived from stateless shop
+/// snapshots.
+model ReleaseProductState {
+  sku        String   @id
+  lastStatus String
+  seenAt     DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
