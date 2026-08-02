@@ -14,17 +14,23 @@ if [ -z "$secret" ]; then
 fi
 test -n "$secret"
 
+# Unpredictable temp path (no symlink attacks in shared /tmp), cleaned on exit.
+body_file="$(mktemp)"
+trap 'rm -f "$body_file"' EXIT
+
 status=0
 for route in refresh-tokens snapshot-followers attach-next-reel sync-releases; do
-  code=$(curl -sS -o /tmp/openreply-cron-last.json -w '%{http_code}' \
+  # The auth header goes through curl's config-from-stdin so the secret never
+  # appears in the process argv (visible to every local user via ps).
+  code=$(curl -sS -o "$body_file" -w '%{http_code}' \
     --max-time 120 \
-    -H "Authorization: Bearer ${secret}" \
+    --config <(printf 'header = "Authorization: Bearer %s"\n' "$secret") \
     "${BASE_URL}/api/cron/${route}") || code=000
   if [ "$code" != "200" ]; then
-    echo "openreply-cron: ${route} returned ${code}: $(head -c 300 /tmp/openreply-cron-last.json)" >&2
+    echo "openreply-cron: ${route} returned ${code}" >&2
     status=1
   else
-    echo "openreply-cron: ${route} ok $(head -c 200 /tmp/openreply-cron-last.json)"
+    echo "openreply-cron: ${route} ok $(head -c 200 "$body_file")"
   fi
 done
 
