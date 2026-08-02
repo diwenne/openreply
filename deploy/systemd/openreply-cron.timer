@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenReply application crons every 15 minutes
+
+[Timer]
+OnBootSec=3m
+OnUnitActiveSec=15m
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Drive OpenReply application cron endpoints
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openreply/deploy/cron.sh
