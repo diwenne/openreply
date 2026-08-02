@@ -7,6 +7,11 @@ import {
 } from "crypto";
 import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
+const INSTAGRAM_OAUTH_SCOPE = [
+  "instagram_business_basic",
+  "instagram_business_manage_messages",
+  "instagram_business_manage_comments",
+].join(",");
 const INSTAGRAM_OAUTH_URL = "https://api.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
 const ALGORITHM = "aes-256-gcm";
@@ -73,8 +78,13 @@ export function getAuthorizationUrl(redirectUri: string, state: string): string 
   const params = new URLSearchParams({
     client_id: requireEnv("INSTAGRAM_APP_ID"),
     redirect_uri: redirectUri,
-    scope:
-      "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights",
+    // instagram_business_manage_insights is deliberately absent: Meta refuses to
+    // add it to an app configured with Instagram Login (it is offered on the
+    // Facebook Login variant instead), and requesting an unconfigured scope
+    // fails the whole authorization. The overview route already degrades to
+    // insightsAvailable=false, so views/reach/saved/shares simply stay hidden.
+    // Re-add it here if Meta ever exposes it on the Instagram Login setup.
+    scope: INSTAGRAM_OAUTH_SCOPE,
     response_type: "code",
     state,
   });
