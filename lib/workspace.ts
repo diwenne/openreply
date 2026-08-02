@@ -68,6 +68,33 @@ export async function getWorkspaceMembership(userId: string): Promise<{
   };
 }
 
+/**
+ * Single-organization mode for self-hosted instances: instead of provisioning
+ * every new user their own empty OWNER workspace (upstream default, sensible
+ * for a SaaS), a colleague passing the domain allowlist joins the oldest
+ * existing workspace as MEMBER and immediately sees the connected Instagram
+ * accounts. Explicit invitations keep priority and their role. The very first
+ * user still creates the workspace and owns it.
+ */
+async function joinExistingWorkspaceIfConfigured(
+  userId: string
+): Promise<Workspace | null> {
+  if (process.env.AUTH_JOIN_EXISTING_WORKSPACE !== "true") return null;
+
+  const oldest = await prisma.workspace.findFirst({
+    orderBy: { createdAt: "asc" },
+  });
+  if (!oldest) return null;
+
+  await prisma.workspaceMember.upsert({
+    where: { workspaceId_userId: { workspaceId: oldest.id, userId } },
+    create: { workspaceId: oldest.id, userId, role: "MEMBER" },
+    update: {},
+  });
+
+  return oldest;
+}
+
 export async function ensureWorkspaceForUser(
   userId: string,
   email?: string | null
@@ -78,6 +105,9 @@ export async function ensureWorkspaceForUser(
   if (existingMembership) {
     return existingMembership.workspace;
   }
+
+  const joined = await joinExistingWorkspaceIfConfigured(userId);
+  if (joined) return joined;
 
   const workspaceName = email ? `${email.split("@")[0]}'s workspace` : "My workspace";
 
