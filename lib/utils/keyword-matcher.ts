@@ -6,6 +6,13 @@
  * - Whole-word or partial matching
  * - Multi-keyword OR logic (any match = true)
  * - Emoji and special character stripping
+ *
+ * Unicode note: the original implementation used ASCII `\w` and `\b`, which
+ * treat every Cyrillic / CJK / accented letter as a "special character" and a
+ * non-word char. That silently deleted all non-Latin comment text before
+ * matching, so a Russian keyword like "Клод" could never match. Everything
+ * here uses Unicode property escapes (`\p{L}` letters, `\p{N}` numbers) with the
+ * `u` flag so non-Latin scripts work.
  */
 
 export interface KeywordMatchResult {
@@ -15,16 +22,16 @@ export interface KeywordMatchResult {
 
 /**
  * Strip emojis and special characters from text, keeping only
- * alphanumeric characters and whitespace.
+ * letters (any script), numbers, and whitespace.
  */
 export function stripSpecialCharacters(text: string): string {
-  // Remove emoji ranges and other special unicode chars
   return text
     .replace(
       /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}]/gu,
       ""
     )
-    .replace(/[^\w\s]/g, " ")
+    // Keep letters (any script) and numbers; turn everything else into a space.
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -59,17 +66,21 @@ export function matchKeywords(
     if (!cleanedKeyword) continue;
 
     if (wholeWordMatch) {
-      // Build a regex for whole-word matching
       const escapedKeyword = cleanedKeyword.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
       );
-      const regex = new RegExp(`\\b${escapedKeyword}\\b`, "i");
+      // Unicode-aware "whole word": the keyword must not be flanked by another
+      // letter or number. Lookarounds replace ASCII `\b`, which never fires
+      // between two non-Latin characters.
+      const regex = new RegExp(
+        `(?<![\\p{L}\\p{N}])${escapedKeyword}(?![\\p{L}\\p{N}])`,
+        "iu"
+      );
       if (regex.test(cleanedText)) {
         return { matched: true, matchedKeyword: keyword };
       }
     } else {
-      // Partial match — keyword substring exists anywhere in the cleaned text
       if (cleanedText.includes(cleanedKeyword)) {
         return { matched: true, matchedKeyword: keyword };
       }

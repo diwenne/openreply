@@ -34,6 +34,19 @@ describe("stripSpecialCharacters", () => {
   it("should preserve numbers", () => {
     expect(stripSpecialCharacters("price123")).toBe("price123");
   });
+
+  it("should preserve non-Latin letters (Cyrillic)", () => {
+    expect(stripSpecialCharacters("Клод")).toBe("Клод");
+  });
+
+  it("should preserve non-Latin letters within punctuation", () => {
+    expect(stripSpecialCharacters("Клод!!")).toBe("Клод");
+  });
+
+  it("should preserve other scripts (Greek, CJK)", () => {
+    expect(stripSpecialCharacters("λόγος")).toBe("λόγος");
+    expect(stripSpecialCharacters("链接")).toBe("链接");
+  });
 });
 
 describe("matchKeywords — whole word matching", () => {
@@ -80,6 +93,39 @@ describe("matchKeywords — whole word matching", () => {
     const result = matchKeywords("hello world", ["link", "price"], true);
     expect(result.matched).toBe(false);
     expect(result.matchedKeyword).toBeNull();
+  });
+});
+
+describe("matchKeywords — non-Latin scripts", () => {
+  it("should match a Cyrillic keyword in whole-word mode", () => {
+    const result = matchKeywords("Клод", ["Клод"], true);
+    expect(result.matched).toBe(true);
+    expect(result.matchedKeyword).toBe("Клод");
+  });
+
+  it("should match a Cyrillic keyword inside a sentence", () => {
+    expect(matchKeywords("хочу Клод плиз", ["Клод"], true).matched).toBe(true);
+  });
+
+  it("should match a Cyrillic keyword surrounded by punctuation/emoji", () => {
+    expect(matchKeywords("🔥 Клод! 🔥", ["Клод"], true).matched).toBe(true);
+  });
+
+  it("should be case-insensitive for Cyrillic", () => {
+    expect(matchKeywords("клод", ["КЛОД"], true).matched).toBe(true);
+  });
+
+  it("should NOT match a different Cyrillic word in whole-word mode", () => {
+    // "Клодом" is a different word; whole-word must not fire on the stem.
+    expect(matchKeywords("Клодом", ["Клод"], true).matched).toBe(false);
+  });
+
+  it("should match a Cyrillic stem in partial mode", () => {
+    expect(matchKeywords("Клодом", ["Клод"], false).matched).toBe(true);
+  });
+
+  it("should match other scripts (CJK)", () => {
+    expect(matchKeywords("发我链接", ["链接"], false).matched).toBe(true);
   });
 });
 
