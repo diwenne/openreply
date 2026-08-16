@@ -626,9 +626,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         </div>
       </div>
 
+      {/* min-w-0 on the cells: a grid item defaults to min-width:auto, so a
+          long string widens the whole page instead of wrapping. */}
       <div className="grid gap-6 lg:grid-cols-[300px_1fr] lg:gap-8">
       {/* Left: controls */}
-      <div className="space-y-8">
+      <div className="space-y-8 min-w-0">
         {error && (
           <div className="rounded border border-error/20 bg-error/10 p-3 text-sm text-error">
             {error}
@@ -982,7 +984,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       {/* Right: preview */}
       <div>
         <p className="mb-4 text-sm text-muted">Preview</p>
-        <div className="flex justify-center lg:sticky lg:top-6 lg:block">
+        <div className="flex min-w-0 justify-center lg:sticky lg:top-6 lg:block">
           <CampaignPreview
             tab={previewTab}
             onTabChange={setPreviewTab}

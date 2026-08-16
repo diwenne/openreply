@@ -152,7 +152,8 @@ function StatusBar() {
 function Phone({ children }: { children: React.ReactNode }) {
   const btn = "absolute w-[3px] rounded-sm bg-gradient-to-r from-zinc-500 to-zinc-700";
   return (
-    <div className="relative w-[300px]">
+    // max-w-full so the fixed 300px frame cannot overflow a narrow screen
+    <div className="relative w-[300px] max-w-full">
       {/* Left side buttons: action, volume up, volume down */}
       <span className={`${btn} -left-[2px] top-[96px] h-7`} />
       <span className={`${btn} -left-[2px] top-[140px] h-12`} />

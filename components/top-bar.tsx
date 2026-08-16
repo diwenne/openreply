@@ -34,7 +34,16 @@ export default function TopBar({
   const title = pageTitles[pathname] ?? "Dashboard";
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 h-16 px-4 lg:px-8 border-b border-border bg-background">
+    <header
+      className="sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-8 border-b border-border bg-background"
+      // Installed to the home screen the app starts at the very top of the
+      // display, so without this the title sits under the clock and battery.
+      // The inset is 0 in a browser tab and on desktop.
+      style={{
+        height: "calc(4rem + env(safe-area-inset-top))",
+        paddingTop: "env(safe-area-inset-top)",
+      }}
+    >
       <div className="flex min-w-0 items-center gap-3 sm:gap-4">
         <button
           onClick={onMenuClick}
