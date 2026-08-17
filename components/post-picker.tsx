@@ -139,7 +139,13 @@ export default function PostPicker({
       <div className="flex items-center justify-between gap-2">
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // Back to one batch on every new search. Without this, a grid
+            // expanded under an earlier query stays expanded once it is
+            // cleared, which is the case this whole change exists to avoid.
+            setShown(PAGE_SIZE);
+          }}
           placeholder="Search your posts by caption…"
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
         />
