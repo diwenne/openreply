@@ -1,3 +1,5 @@
+import { pickLanguage, type Lang } from "@/lib/utils/language";
+
 export interface MessageTrackedLink {
   slug: string;
   destinationUrl: string;
@@ -41,11 +43,13 @@ export function replaceUrlWithTrackedPlaceholder(
 export function renderMessageWithoutLink({
   message,
   commenterName,
+  language,
 }: {
   message: string;
   commenterName?: string | null;
+  language?: Lang | null;
 }) {
-  return message
+  return pickLanguage(message, language)
     .replace(/\{username\}/gi, commenterName ?? "there")
     .replace(/\s*\{link\}\s*/gi, " ")
     .trim();
@@ -66,13 +70,18 @@ export function renderMessageWithTracking({
   commenterName,
   trackedLinks,
   baseUrl,
+  language,
 }: {
   message: string;
   commenterName?: string | null;
   trackedLinks?: MessageTrackedLink[];
   baseUrl?: string;
+  language?: Lang | null;
 }) {
-  let rendered = message.replace(/\{username\}/gi, commenterName ?? "there");
+  let rendered = pickLanguage(message, language).replace(
+    /\{username\}/gi,
+    commenterName ?? "there"
+  );
   const primaryLink = trackedLinks?.[0];
 
   if (!primaryLink) return rendered;
