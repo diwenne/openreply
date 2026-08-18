@@ -27,6 +27,12 @@ import {
 } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import {
+  isLang,
+  languageForKeyword,
+  pickLabel,
+  type Lang,
+} from "@/lib/utils/language";
 import { reserveDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
@@ -100,13 +106,27 @@ function buildInlineLinkFallback(
   message: string,
   commenterName: string | null | undefined,
   trackedLinks: WorkerTrackedLink[],
-  bodyText: string
+  bodyText: string,
+  language?: Lang | null
 ): string {
   const base =
-    renderMessageWithTracking({ message, commenterName, trackedLinks }) ||
-    bodyText;
+    renderMessageWithTracking({
+      message,
+      commenterName,
+      trackedLinks,
+      language,
+    }) || bodyText;
   const extraUrls = trackedLinks.slice(1).map((link) => buildTrackedUrl(link.slug));
   return extraUrls.length > 0 ? `${base}\n${extraUrls.join("\n")}` : base;
+}
+
+/**
+ * Appends the language to a button payload (`reveal:<id>` -> `reveal:<id>:it`).
+ * With no language the payload is byte-identical to the old one, so buttons
+ * sent before this feature keep working.
+ */
+function withLanguage(payload: string, language: Lang | null | undefined) {
+  return language ? `${payload}:${language}` : payload;
 }
 
 type RevealAutomation = {
@@ -126,7 +146,8 @@ async function sendRevealDirectMessage(
   automation: RevealAutomation,
   userId: string,
   commenterName: string | null,
-  context: string
+  context: string,
+  language?: Lang | null
 ): Promise<void> {
   if (automation.trackedLinks.length === 0) {
     await sendDirectMessage(
@@ -137,6 +158,7 @@ async function sendRevealDirectMessage(
         message: automation.dmMessage,
         commenterName,
         trackedLinks: automation.trackedLinks,
+        language,
       })
     );
     return;
@@ -147,6 +169,7 @@ async function sendRevealDirectMessage(
     renderMessageWithoutLink({
       message: automation.dmMessage,
       commenterName,
+      language,
     }) || "Here's your link:";
   const buttons = buildLinkButtons(
     automation.trackedLinks,
@@ -179,7 +202,8 @@ async function sendRevealDirectMessage(
           automation.dmMessage,
           commenterName,
           automation.trackedLinks,
-          bodyText
+          bodyText,
+          language
         )
       );
     } catch {
@@ -236,6 +260,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     if (!matchResult.matched) {
       continue;
     }
+
+    // The matched keyword decides the language (see KEYWORD_LANGUAGES). An
+    // unmapped keyword — or an "any word" campaign — leaves it null and the
+    // message goes out in full, bilingual, as before.
+    const language = languageForKeyword(matchResult.matchedKeyword);
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -369,6 +398,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: chosen,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          language,
         });
         await sendCommentReply(accessToken, commentId, publicReply);
         await prisma.dmLog.update({
@@ -546,16 +576,23 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.openingDmMessage as string,
           commenterName,
           trackedLinks: [],
+          language,
         });
         await sendPrivateReplyWithButton(
           accessToken,
           automation.instagramAccount.instagramId,
           commentId,
           openingText,
-          automation.openingDmButtonLabel as string,
-          automation.requireFollow
-            ? `followcheck:${automation.id}`
-            : `reveal:${automation.id}`
+          pickLabel(automation.openingDmButtonLabel, language),
+          // The language travels in the payload: by the time the user taps the
+          // button the original comment is out of the picture, and without it
+          // the final message would fall back to bilingual halfway through.
+          withLanguage(
+            automation.requireFollow
+              ? `followcheck:${automation.id}`
+              : `reveal:${automation.id}`,
+            language
+          )
         );
       } else if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
@@ -563,14 +600,16 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             automation.followPromptMessage ||
             "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
           commenterName,
+          language,
         });
         await sendPrivateReplyWithButton(
           accessToken,
           automation.instagramAccount.instagramId,
           commentId,
           promptText,
-          automation.followPromptButtonLabel || "i'm following",
-          `followcheck:${automation.id}`
+          pickLabel(automation.followPromptButtonLabel, language) ||
+            "i'm following",
+          withLanguage(`followcheck:${automation.id}`, language)
         );
       } else if (automation.trackedLinks.length > 0) {
         // Try button template first; if Meta rejects it, fall back to inline links.
@@ -578,6 +617,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           renderMessageWithoutLink({
             message: automation.dmMessage,
             commenterName,
+            language,
           }) || "Here's your link:";
         const buttons = buildLinkButtons(
           automation.trackedLinks,
@@ -606,7 +646,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             automation.dmMessage,
             commenterName,
             automation.trackedLinks,
-            bodyText
+            bodyText,
+            language
           );
           try {
             await sendPrivateReply(
@@ -627,6 +668,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          language,
         });
         await sendPrivateReply(
           accessToken,
@@ -675,7 +717,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
 /**
  * Deliver the reveal message after a user taps an opening DM's button.
- * The postback payload is `reveal:<automationId>`; the sender is the user's
+ * The postback payload is `reveal:<automationId>` (or `reveal:<automationId>:<lang>`
+ * when the keyword picked a language); the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
  */
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
@@ -683,9 +726,13 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   const isFollowCheck = payload.startsWith("followcheck:");
   if (!isFollowCheck && !payload.startsWith("reveal:")) return;
-  const automationId = payload.slice(
+  const rest = payload.slice(
     isFollowCheck ? "followcheck:".length : "reveal:".length
   );
+  // The language suffix is optional: buttons sent before this feature arrive
+  // without one and stay valid (null language -> the full bilingual message).
+  const [automationId, langSuffix] = rest.split(":");
+  const language: Lang | null = isLang(langSuffix) ? langSuffix : null;
 
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true },
@@ -752,6 +799,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           automation.followPromptMessage ||
           "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
         commenterName,
+        language,
       });
       try {
         await sendDirectMessageWithButton(
@@ -759,8 +807,9 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           automation.instagramAccount.instagramId,
           userId,
           promptText,
-          automation.followPromptButtonLabel || "i'm following",
-          `followcheck:${automation.id}`
+          pickLabel(automation.followPromptButtonLabel, language) ||
+            "i'm following",
+          withLanguage(`followcheck:${automation.id}`, language)
         );
       } catch (error) {
         console.log(
@@ -800,7 +849,8 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       automation,
       userId,
       commenterName,
-      "postback"
+      "postback",
+      language
     );
     // Optional appreciation follow-up: once the link has been delivered, send a
     // short thank-you. It is scheduled as its own delayed job so it can go out
@@ -968,6 +1018,9 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
 
     if (!matchResult.matched) continue;
 
+    // Same rule as the comment path: the matched keyword picks the language.
+    const language = languageForKeyword(matchResult.matchedKeyword);
+
     const existingLog = await prisma.dmLog.findUnique({
       where: {
         automationId_commentId: {
@@ -1091,14 +1144,16 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
             automation.followPromptMessage ||
             "Almost there! Follow me and tap the button below to grab your link 💛",
           commenterName,
+          language,
         });
         await sendDirectMessageWithButton(
           accessToken,
           automation.instagramAccount.instagramId,
           senderId,
           promptText,
-          automation.followPromptButtonLabel || "I'm following ✅",
-          `followcheck:${automation.id}`
+          pickLabel(automation.followPromptButtonLabel, language) ||
+            "I'm following ✅",
+          withLanguage(`followcheck:${automation.id}`, language)
         );
       } else {
         await sendRevealDirectMessage(
@@ -1106,7 +1161,8 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           automation,
           senderId,
           commenterName,
-          "message trigger"
+          "message trigger",
+          language
         );
 
         // The link has been delivered, so the appreciation follow-up applies
