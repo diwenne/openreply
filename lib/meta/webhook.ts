@@ -39,6 +39,12 @@ export interface WebhookCommentEvent {
   commenterId: string;
   commenterName?: string;
   mediaId: string;
+  /**
+   * Set only when the comment was left on an ad: the id of the organic post
+   * the ad was created from. Campaigns are configured against that post, so
+   * matching has to consider it as well as mediaId.
+   */
+  originalMediaId?: string;
 }
 
 interface WebhookEntry {
@@ -56,6 +62,11 @@ interface WebhookEntry {
       };
       media?: {
         id?: string;
+        // Present when media_product_type is "AD": the ad copy gets its own
+        // media id, and this points back to the post it was boosted from.
+        original_media_id?: string;
+        ad_id?: string;
+        media_product_type?: string;
       };
       media_id?: string;
     };
@@ -115,6 +126,13 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
       const value = change.value;
       const commentId = value?.id ?? value?.comment_id;
       const mediaId = value?.media?.id ?? value?.media_id;
+      // A comment on a boosted post arrives with the ad's media id, while the
+      // campaign is set up against the organic post. Keep both so the worker
+      // can match either one.
+      const originalMediaId =
+        value?.media?.original_media_id === mediaId
+          ? undefined
+          : value?.media?.original_media_id;
       const commenterId = value?.from?.id;
 
       if (!entry.id || !commentId || !mediaId || !commenterId) {
@@ -135,6 +153,7 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
         commenterId,
         commenterName: value.from?.username,
         mediaId,
+        originalMediaId,
       });
     }
   }

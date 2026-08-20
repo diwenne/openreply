@@ -99,6 +99,66 @@ describe("parseCommentEvents", () => {
     });
   });
 
+  it("keeps the organic post id of a comment left on an ad", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "comments",
+              value: {
+                id: "comment_456",
+                text: "Link",
+                from: { id: "user_789", username: "testuser" },
+                // A boosted post: the comment carries the ad's own media id,
+                // while the campaign is bound to the post it was made from.
+                media: {
+                  id: "ad_media_999",
+                  ad_id: "ad_123",
+                  original_media_id: "media_101",
+                  media_product_type: "AD",
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const events = parseCommentEvents(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].mediaId).toBe("ad_media_999");
+    expect(events[0].originalMediaId).toBe("media_101");
+  });
+
+  it("leaves originalMediaId unset when it repeats the media id", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "comments",
+              value: {
+                id: "comment_456",
+                text: "Link",
+                from: { id: "user_789", username: "testuser" },
+                media: { id: "media_101", original_media_id: "media_101" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseCommentEvents(payload)[0].originalMediaId).toBeUndefined();
+  });
+
   it("should ignore non-instagram objects", () => {
     const payload = {
       object: "page",

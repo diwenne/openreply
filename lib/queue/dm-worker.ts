@@ -196,13 +196,21 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     commenterId,
     commenterName,
     mediaId,
+    originalMediaId,
   } = job.data;
   const requeueAttempt = job.data.requeueAttempt ?? 0;
 
   const automations = await prisma.automation.findMany({
     where: {
       // Match campaigns bound to this specific post, plus any-post campaigns.
-      OR: [{ postId: mediaId }, { matchAnyPost: true }],
+      // A comment left on an ad carries the ad's own media id, while the
+      // campaign is bound to the post the ad was created from, so both ids
+      // have to be considered or the comment is dropped without a trace.
+      OR: [
+        { postId: mediaId },
+        ...(originalMediaId ? [{ postId: originalMediaId }] : []),
+        { matchAnyPost: true },
+      ],
       isActive: true,
       instagramAccount: {
         instagramId: instagramAccountId,
