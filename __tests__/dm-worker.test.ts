@@ -185,7 +185,7 @@ function getProcessor(): (job: {
   }) => Promise<void>;
 }
 
-function createMockJob(data = mockJobData) {
+function createMockJob(data: Record<string, unknown> = mockJobData) {
   return {
     data,
     id: "job_001",
@@ -273,6 +273,36 @@ beforeEach(() => {
     message_id: "msg_006",
   });
   mockGetUserFollowStatus.mockResolvedValue(true);
+});
+
+describe("DM Worker — comments left on an ad", () => {
+  it("also matches the organic post the ad was created from", async () => {
+    const processor = getProcessor();
+
+    // A boosted post: the comment carries the ad's media id, while the
+    // campaign is bound to the post the ad was made from. Without the second
+    // id in the query the comment matches nothing and is dropped silently.
+    await processor(
+      createMockJob({
+        ...mockJobData,
+        mediaId: "ad_media_999",
+        originalMediaId: "media_101",
+      })
+    );
+
+    expect(mockPrisma.automation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { postId: "ad_media_999" },
+            { postId: "media_101" },
+            { matchAnyPost: true },
+          ],
+        }),
+      })
+    );
+    expect(mockSendPrivateReply).toHaveBeenCalled();
+  });
 });
 
 describe("DM Worker — Full Pipeline", () => {
