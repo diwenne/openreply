@@ -7,7 +7,12 @@ import {
 } from "crypto";
 import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
-const INSTAGRAM_OAUTH_URL = "https://api.instagram.com/oauth/authorize";
+// Instagram API with Instagram Login authorizes on www.instagram.com. The old
+// api.instagram.com/oauth/authorize host belonged to the retired Basic Display
+// API and now 404s ("Sorry, this page isn't available"), which looks like a bad
+// link rather than a wrong endpoint. The token exchange below still lives on
+// api.instagram.com — only the authorize hop moved.
+const INSTAGRAM_OAUTH_URL = "https://www.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
