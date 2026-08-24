@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { DemoNotice } from "@/components/demo-notice";
 
 export const metadata: Metadata = {
   title: "OpenReply - Open source Instagram comment-to-DM automation",
@@ -287,6 +288,8 @@ export default async function Home() {
   const stars = await getGitHubStars();
   return (
     <main className="min-h-screen bg-white text-zinc-900">
+      <DemoNotice variant="banner" />
+
       <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3" aria-label="OpenReply home">
@@ -345,28 +348,6 @@ export default async function Home() {
             >
               See how it works
             </a>
-          </div>
-
-          <div className="mt-5 max-w-2xl border-l-4 border-orange-500 bg-orange-50 px-4 py-3 text-sm leading-6 text-zinc-700">
-            <span className="font-bold text-zinc-900">
-              Deploy your own copy first.
-            </span>{" "}
-            This site is a demo. Your automations cannot run on{" "}
-            <code className="bg-white px-1 py-0.5 font-mono text-xs text-zinc-900">
-              openreply.diwen.dev
-            </code>{" "}
-            — OpenReply needs your own Meta app, your own domain, and a webhook
-            pointed at it, so signing in here will not send DMs for your
-            account.{" "}
-            <a
-              href={SETUP_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold text-orange-700 underline underline-offset-2 transition hover:text-orange-800"
-            >
-              Read the setup guide
-            </a>
-            .
           </div>
 
           <dl className="mt-10 grid max-w-xl grid-cols-3 gap-3">
