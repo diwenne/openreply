@@ -14,6 +14,12 @@ Someone comments `LINK` on your reel, and they get a DM with your link a second 
 
 ManyChat does this and charges a monthly fee. OpenReply is the same core feature, free, running on your own infrastructure, with no seat limits and no plan caps.
 
+> **OpenReply is self-hosted. You have to deploy your own copy.**
+>
+> [openreply.diwen.dev](https://openreply.diwen.dev) is a demo of the dashboard, not a service you can sign up for. Creating an account there will never send a DM for you, and there is no hosted plan to upgrade to.
+>
+> Instagram automation runs against *your* Meta app, and Meta ties that app to a domain and a webhook URL you control. So a working instance means: your fork deployed, your domain pointed at it, your Meta app created, and your webhook registered. [docs/setup.md](docs/setup.md) walks through all of it.
+
 > If this saves you a subscription or a weekend of building, a star on the repo genuinely helps other people find it.
 
 ## Why this exists
@@ -26,6 +32,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 
 - Keyword to DM. Match one or many keywords per post, whole-word or partial.
 - Optional public reply. Post a visible comment reply on top of the DM.
+- DM and Story reply triggers. The same keywords can also fire on an inbound DM, which covers text replies to your Stories, since Instagram delivers those as DMs. That makes `Reply LINK to this Story` work with no post involved. Turn it on per campaign, and subscribe to the `messages` webhook field when you set up your Meta app.
 - Tracked links. Swap a link for a tracked redirect and see clicks and CTR per campaign.
 - Two link buttons. Send up to two tappable link buttons in one DM, each a separate tracked link with its own click stats.
 - Follow gate. Optionally require a follow before you hand over the link. The DM asks the commenter to follow and tap a button; on tap, OpenReply checks Meta's `is_user_follow_business` flag and only sends the link once they follow, re-prompting until then. It fails open (sends the link anyway) when Instagram does not return follow status, so a real follower is never trapped.
@@ -40,9 +47,9 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 
 ## How it works
 
-1. Someone comments on your Instagram post or reel.
+1. Someone comments on your Instagram post or reel, or DMs you, or replies to your Story.
 2. Meta sends a webhook to your OpenReply instance.
-3. OpenReply checks the comment against your active campaigns.
+3. OpenReply checks the text against your active campaigns.
 4. On a keyword match, it queues a job.
 5. A background worker sends the private reply, and the public reply if you enabled one.
 
@@ -55,6 +62,8 @@ You need a few free accounts before anything works: a Meta developer app, a Rese
 The honest version: the code deploys in minutes, but the Meta app setup is the part that takes real time. Read [docs/setup.md](docs/setup.md) before you start. It is the single setup guide, covering hosting, your domain, the environment, and every Meta wrong turn so you do not have to find them yourself.
 
 ### Deploy the web app
+
+This is the part people skip. There is no shared instance to join — the button below creates *your* deployment, on *your* domain, which is the only thing your Meta app is allowed to talk to.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/diwenne/openreply)
 

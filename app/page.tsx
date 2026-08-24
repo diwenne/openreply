@@ -9,6 +9,8 @@ export const metadata: Metadata = {
 };
 
 const GITHUB_URL = "https://github.com/diwenne/openreply";
+const SETUP_DOCS_URL =
+  "https://github.com/diwenne/openreply/blob/main/docs/setup.md";
 
 function formatStars(count: number): string {
   if (count >= 1000) {
@@ -345,6 +347,28 @@ export default async function Home() {
             </a>
           </div>
 
+          <div className="mt-5 max-w-2xl border-l-4 border-orange-500 bg-orange-50 px-4 py-3 text-sm leading-6 text-zinc-700">
+            <span className="font-bold text-zinc-900">
+              Deploy your own copy first.
+            </span>{" "}
+            This site is a demo. Your automations cannot run on{" "}
+            <code className="bg-white px-1 py-0.5 font-mono text-xs text-zinc-900">
+              openreply.diwen.dev
+            </code>{" "}
+            — OpenReply needs your own Meta app, your own domain, and a webhook
+            pointed at it, so signing in here will not send DMs for your
+            account.{" "}
+            <a
+              href={SETUP_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-orange-700 underline underline-offset-2 transition hover:text-orange-800"
+            >
+              Read the setup guide
+            </a>
+            .
+          </div>
+
           <dl className="mt-10 grid max-w-xl grid-cols-3 gap-3">
             {heroStats.map((stat) => (
               <div key={stat.label} className="border border-zinc-200 bg-zinc-50 p-4">
@@ -443,6 +467,22 @@ export default async function Home() {
             </h2>
             <p className="mt-4 text-base text-zinc-600">
               Free and open source. Star it if it saves you a subscription.
+            </p>
+            <p className="mt-3 text-sm leading-6 text-zinc-600">
+              <span className="font-bold text-zinc-900">
+                On your own deployment, not this one.
+              </span>{" "}
+              Clone the repo and follow the{" "}
+              <a
+                href={SETUP_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-orange-700 underline underline-offset-2 transition hover:text-orange-800"
+              >
+                setup guide
+              </a>{" "}
+              — a Meta app and a domain of your own are required before anything
+              sends.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
