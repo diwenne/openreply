@@ -50,6 +50,28 @@ export function getMetaGraphApiVersion(): string {
   return process.env.META_GRAPH_API_VERSION ?? "v25.0";
 }
 
+/**
+ * Optional sign-in allowlist.
+ *
+ * A self-hosted instance on a public domain is open to signup: the email
+ * provider creates an account for whoever asks for a magic link, and that
+ * account gets its own workspace. ALLOWED_EMAILS closes it to a comma-separated
+ * list of addresses. Left unset, sign-in behaves exactly as before, so an
+ * existing deployment is unaffected.
+ */
+export function isEmailAllowedToSignIn(
+  email: string | null | undefined
+): boolean {
+  const allowed = (process.env.ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (allowed.length === 0) return true;
+  if (!email) return false;
+  return allowed.includes(email.toLowerCase());
+}
+
 export const serverEnvSchema = z.object({
   NEXTAUTH_URL: z.string().url(),
   NEXTAUTH_SECRET: z.string().min(16),

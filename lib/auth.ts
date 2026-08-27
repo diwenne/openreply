@@ -4,6 +4,7 @@ import Resend from "next-auth/providers/resend";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
+import { isEmailAllowedToSignIn } from "@/lib/env";
 
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
@@ -30,6 +31,11 @@ export const authConfig = {
         }),
   ],
   callbacks: {
+    // Runs before the magic link is sent, so a blocked address never receives
+    // one, and again when the link is verified.
+    async signIn({ user }) {
+      return isEmailAllowedToSignIn(user?.email);
+    },
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
