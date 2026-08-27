@@ -13,6 +13,13 @@
  * matching, so a Russian keyword like "Клод" could never match. Everything
  * here uses Unicode property escapes (`\p{L}` letters, `\p{N}` numbers) with the
  * `u` flag so non-Latin scripts work.
+ *
+ * Diacritics note: `\p{L}` keeps accented letters intact, which is correct, but
+ * it means "PREÇO" and "preco" stay different strings and never match each
+ * other. Commenters type accents inconsistently and keyboards differ, so a
+ * Portuguese or Spanish campaign keyed on "preco" silently misses every
+ * commenter who typed "preço", and vice versa. `foldDiacritics` closes that
+ * gap on BOTH sides of the comparison.
  */
 
 export interface KeywordMatchResult {
@@ -37,7 +44,45 @@ export function stripSpecialCharacters(text: string): string {
 }
 
 /**
+ * Remove diacritics from Latin-script text, leaving every other script byte
+ * for byte identical.
+ *
+ * The scoping is the whole point and is not caution for its own sake. The
+ * usual one-liner, `text.normalize("NFD").replace(/\p{M}/gu, "")`, is wrong
+ * for a multi-script inbox because a combining mark is load bearing outside
+ * Latin: it deletes Devanagari vowel signs ("किताब" becomes "कतब"), strips
+ * Thai and Arabic vowel marks, folds Cyrillic "й" to "и" and Ukrainian "ї" to
+ * "і", and turns the Japanese dakuten in "ガード" into "カート", which is a
+ * different word. Only Latin marks are dropped here.
+ *
+ * Input is decomposed first so the function behaves the same whether the
+ * source text arrived precomposed (U+00E9) or decomposed (U+0065 U+0301);
+ * Instagram returns both.
+ */
+export function foldDiacritics(text: string): string {
+  let out = "";
+  let baseIsLatin = false;
+
+  for (const char of text.normalize("NFD")) {
+    if (/\p{M}/u.test(char)) {
+      // A mark inherits the script of the base character before it, so the
+      // base is what decides whether this mark is dropped or kept.
+      if (!baseIsLatin) out += char;
+      continue;
+    }
+    baseIsLatin = /\p{Script=Latin}/u.test(char);
+    out += char;
+  }
+
+  return out.normalize("NFC");
+}
+
+/**
  * Check if a comment text matches any of the given keywords.
+ *
+ * Both sides are stripped of special characters and folded for Latin
+ * diacritics before comparison, so "PREÇO" matches a "preco" keyword and a
+ * "preço" keyword matches a "PRECO" comment.
  *
  * @param commentText - The raw comment text to check
  * @param keywords - Array of keywords to match against
@@ -54,14 +99,18 @@ export function matchKeywords(
     return { matched: false, matchedKeyword: null };
   }
 
-  const cleanedText = stripSpecialCharacters(commentText).toLowerCase();
+  const cleanedText = foldDiacritics(
+    stripSpecialCharacters(commentText)
+  ).toLowerCase();
 
   if (!cleanedText) {
     return { matched: false, matchedKeyword: null };
   }
 
   for (const keyword of keywords) {
-    const cleanedKeyword = stripSpecialCharacters(keyword).toLowerCase();
+    const cleanedKeyword = foldDiacritics(
+      stripSpecialCharacters(keyword)
+    ).toLowerCase();
 
     if (!cleanedKeyword) continue;
 
