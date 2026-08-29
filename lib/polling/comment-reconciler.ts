@@ -155,6 +155,7 @@ async function sweepCampaign(
   const mediaIds: string[] = [];
   if (automation.postId) {
     mediaIds.push(automation.postId);
+    mediaIds.push(...(await adMediaFor(automation.postId)));
   } else if (automation.matchAnyPost) {
     try {
       const media = await getUserMedia(accessToken, RECENT_MEDIA_LIMIT);
@@ -244,6 +245,41 @@ async function sweepCampaign(
   }
 
   return stat;
+}
+
+/**
+ * Ad copies of a post, as seen in webhooks already received.
+ *
+ * Boosting a post gives it a second media id: comments left on the ad arrive
+ * with the ad's `media.id` and the post's id in `original_media_id`. The sweep
+ * would otherwise only ever look at the post itself, so a comment Meta fails to
+ * deliver on the ad is lost for good — exactly the case this safety net exists
+ * for, and the one where volume is highest.
+ *
+ * The ad ids are recovered from the webhooks themselves rather than from the
+ * ads API, which would need ads_management on top of the permissions the app
+ * already asks for. The trade-off: an ad becomes visible to the sweep only once
+ * a single comment on it has arrived. That is enough for the failure being
+ * covered here, where some webhooks arrive and others do not.
+ */
+async function adMediaFor(postId: string): Promise<string[]> {
+  try {
+    const rows = await prisma.$queryRaw<{ mediaId: string | null }[]>`
+      SELECT DISTINCT change->'value'->'media'->>'id' AS "mediaId"
+      FROM "WebhookEvent" w,
+           jsonb_array_elements(w.payload::jsonb->'entry') entry,
+           jsonb_array_elements(entry->'changes') change
+      WHERE change->>'field' = 'comments'
+        AND change->'value'->'media'->>'original_media_id' = ${postId}
+        AND w."createdAt" > now() - interval '90 days'
+    `;
+    return rows
+      .map((r) => r.mediaId)
+      .filter((id): id is string => Boolean(id) && id !== postId);
+  } catch {
+    // A failure here must not stop the sweep: the post itself is still checked.
+    return [];
+  }
 }
 
 async function recordSweep(
