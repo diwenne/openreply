@@ -262,7 +262,7 @@ async function sweepCampaign(
  * a single comment on it has arrived. That is enough for the failure being
  * covered here, where some webhooks arrive and others do not.
  */
-async function adMediaFor(postId: string): Promise<string[]> {
+export async function adMediaFor(postId: string): Promise<string[]> {
   try {
     const rows = await prisma.$queryRaw<{ mediaId: string | null }[]>`
       SELECT DISTINCT change->'value'->'media'->>'id' AS "mediaId"
