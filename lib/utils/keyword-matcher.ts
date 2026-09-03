@@ -28,6 +28,55 @@ export interface KeywordMatchResult {
 }
 
 /**
+ * Canonicalise Arabic-script text (Persian, Arabic, Urdu) before matching.
+ *
+ * `foldDiacritics` deliberately leaves non-Latin marks alone because they are
+ * load bearing in Devanagari, Thai and Japanese. In the Arabic script they are
+ * not: the letter variants below are the *same letter* typed on a different
+ * keyboard, and harakat are optional vocalisation almost nobody types. Without
+ * this step an Iranian account keyed on "لینک" misses every commenter whose
+ * phone sends the Arabic yeh and kaf (U+064A / U+0643) instead of the Persian
+ * ones (U+06CC / U+06A9) — the two strings look identical on screen and never
+ * compare equal. The same holds for "کد۵" against a "کد5" keyword.
+ *
+ * Applied to both sides of the comparison, so it never matters which form the
+ * account owner typed into the campaign builder.
+ */
+// Read this table by codepoint, not by eye: several sources render identically
+// to their targets (U+064A vs U+06CC, U+0643 vs U+06A9) and the last rule
+// matches characters that render as nothing at all.
+const ARABIC_SCRIPT_FOLDING: Array<[RegExp, string]> = [
+  // Same letter, different keyboard layout.
+  [/[يىے]/gu, "ی"], // Arabic yeh, alef maksura, barree ye
+  [/ك/gu, "ک"], // Arabic kaf -> Persian keheh
+  [/ة/gu, "ه"], // teh marbuta -> heh
+  [/[آأإٱ]/gu, "ا"], // alef w/ madda or hamza -> alef
+  // Optional vocalisation and typographic padding: never semantic in Persian.
+  [/[ً-ْٰ]/gu, ""], // harakat, sukun, superscript alef
+  [/ـ/gu, ""], // tatweel / kashida stretching
+  // ZWNJ is a rendering hint and half of Instagram types it while half does
+  // not, so "قیمت‌ها" and "قیمتها" have to compare equal. Deleted rather than
+  // turned into a space, because the no-separator spelling is the fallback
+  // people actually type. Bidi marks go with it — they carry no meaning.
+  [/[‌‎‏]/gu, ""],
+];
+
+// Persian (U+06F0..) and Arabic-Indic (U+0660..) digit blocks, both ordered 0-9.
+const EASTERN_DIGITS = /[۰-۹٠-٩]/gu;
+
+export function normalizeArabicScript(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of ARABIC_SCRIPT_FOLDING) {
+    out = out.replace(pattern, replacement);
+  }
+  return out.replace(EASTERN_DIGITS, (digit) => {
+    const code = digit.codePointAt(0)!;
+    const zero = code >= 0x06f0 ? 0x06f0 : 0x0660;
+    return String(code - zero);
+  });
+}
+
+/**
  * Strip emojis and special characters from text, keeping only
  * letters (any script), numbers, and whitespace.
  */
@@ -37,8 +86,14 @@ export function stripSpecialCharacters(text: string): string {
       /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}]/gu,
       ""
     )
-    // Keep letters (any script) and numbers; turn everything else into a space.
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    // Keep letters (any script), numbers, and combining marks; turn everything
+    // else into a space. `\p{M}` has to be kept here or this replace undoes the
+    // work foldDiacritics does further down the pipeline: a combining mark is
+    // neither a letter nor a number, so without it "señor" typed in NFD becomes
+    // "sen or", "किताब" becomes "क त ब", and Arabic harakat split every
+    // vocalised Persian word into fragments. Marks survive this step and
+    // foldDiacritics then decides, per script, which ones to drop.
+    .replace(/[^\p{L}\p{N}\p{M}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -100,7 +155,7 @@ export function matchKeywords(
   }
 
   const cleanedText = foldDiacritics(
-    stripSpecialCharacters(commentText)
+    stripSpecialCharacters(normalizeArabicScript(commentText))
   ).toLowerCase();
 
   if (!cleanedText) {
@@ -109,7 +164,7 @@ export function matchKeywords(
 
   for (const keyword of keywords) {
     const cleanedKeyword = foldDiacritics(
-      stripSpecialCharacters(keyword)
+      stripSpecialCharacters(normalizeArabicScript(keyword))
     ).toLowerCase();
 
     if (!cleanedKeyword) continue;
