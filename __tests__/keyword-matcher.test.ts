@@ -182,3 +182,58 @@ describe("matchKeywords — singular/plural tolerance", () => {
     expect(matchKeywords("ma carte cadeau", ["cartes cadeaux"], true).matched).toBe(true);
   });
 });
+
+describe("city keywords — campagne première (toutes graphies)", () => {
+  const cities = [
+    "Paris", "Saint-Étienne", "Aix-en-Provence", "Besançon", "Nîmes",
+    "Clermont-Ferrand", "Nouméa", "Genève", "Liège", "Le Havre",
+    "Pointe-à-Pitre", "Fort-de-France", "Mâcon", "Épinal", "Angoulême",
+  ];
+
+  const variants: Array<[string, string]> = [
+    ["paris", "Paris"],
+    ["PARIS", "Paris"],
+    ["Paris !!", "Paris"],
+    ["je viens de saint-étienne", "Saint-Étienne"],
+    ["SAINT ETIENNE", "Saint-Étienne"],
+    ["saint etienne ❤️", "Saint-Étienne"],
+    ["aix en provence", "Aix-en-Provence"],
+    ["AIX-EN-PROVENCE", "Aix-en-Provence"],
+    ["besancon", "Besançon"],
+    ["BESANÇON", "Besançon"],
+    ["nimes", "Nîmes"],
+    ["clermont ferrand", "Clermont-Ferrand"],
+    ["CLERMONT-FERRAND", "Clermont-Ferrand"],
+    ["noumea", "Nouméa"],
+    ["geneve", "Genève"],
+    ["GENÈVE 🙏", "Genève"],
+    ["liege", "Liège"],
+    ["le havre", "Le Havre"],
+    ["LE HAVRE", "Le Havre"],
+    ["pointe a pitre", "Pointe-à-Pitre"],
+    ["fort de france", "Fort-de-France"],
+    ["macon", "Mâcon"],
+    ["epinal", "Épinal"],
+    ["angouleme", "Angoulême"],
+  ];
+
+  it.each(variants)(
+    "déclenche pour « %s » (ville attendue : %s)",
+    (text, expected) => {
+      const result = matchKeywords(text, cities, true);
+      expect(result.matched).toBe(true);
+      expect(result.matchedKeyword).toBe(expected);
+    }
+  );
+
+  it("déclenche aussi au milieu d'une phrase", () => {
+    expect(
+      matchKeywords("moi je serais chaud pour paris ou lyon", ["Paris"], true)
+        .matched
+    ).toBe(true);
+  });
+
+  it("ne déclenche pas pour une ville absente de la liste", () => {
+    expect(matchKeywords("montréal", cities, true).matched).toBe(false);
+  });
+});

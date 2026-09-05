@@ -14,7 +14,7 @@ interface KeywordInputProps {
   max?: number;
 }
 
-export default function KeywordInput({ keywords, onChange, max = 10 }: KeywordInputProps) {
+export default function KeywordInput({ keywords, onChange, max = 200 }: KeywordInputProps) {
   const [input, setInput] = useState("");
 
   function addKeyword(value: string) {
