@@ -253,12 +253,9 @@ model DmLog {
   @@index([status])
 }
 
-// Every comment the system has seen, from either the webhook or the polling
-// reconciler. This is the shared dedup set: a comment id present here has
-// already been queued for processing, so neither path acts on it twice. It is
-// distinct from DmLog (which only records comments that matched a campaign);
-// this records all comments so the reconciler doesn't re-sweep non-matching
-// ones every cycle.
+// Legacy reconciliation model; currently unwired. Runtime code does not read
+// or write ProcessedComment. Current reconciliation dedup uses owner-reply
+// checks and DmLog guards instead.
 model ProcessedComment {
   id                 String   @id @default(cuid())
   instagramAccountId String
