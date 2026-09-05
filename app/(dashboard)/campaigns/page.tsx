@@ -237,37 +237,14 @@ export default function CampaignsPage() {
     }
   }
 
-  async function duplicateAutomation(auto: Campaign) {
+  // The copy is made server-side from the stored campaign, so settings this
+  // list never loads (the DM trigger, the follow-up, the link button label)
+  // still come along.
+  async function duplicateAutomation(id: string) {
     setMenuOpenId(null);
-    const specific = !auto.matchAnyPost && !auto.pendingNextReel;
     try {
-      const res = await fetch("/api/automations", {
+      const res = await fetch(`/api/automations/duplicate?id=${id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${auto.name} copy`,
-          instagramAccountId: auto.instagramAccountId,
-          postId: specific ? auto.postId : null,
-          postUrl: specific ? auto.postUrl : null,
-          matchAnyPost: auto.matchAnyPost,
-          pendingNextReel: auto.pendingNextReel,
-          matchAnyWord: auto.matchAnyWord,
-          keywords: auto.keywords,
-          dmMessage: auto.dmMessage,
-          openingDmEnabled: auto.openingDmEnabled,
-          openingDmMessage: auto.openingDmMessage,
-          openingDmButtonLabel: auto.openingDmButtonLabel,
-          publicReplyEnabled: auto.publicReplyEnabled,
-          publicReplyMessages: auto.publicReplyMessages,
-          trackedDestinationUrl: auto.trackedLinks[0]?.destinationUrl ?? "",
-          secondaryDestinationUrl: auto.trackedLinks[1]?.destinationUrl ?? "",
-          secondaryButtonLabel: auto.trackedLinks[1]?.label ?? "Open link",
-          requireFollow: auto.requireFollow,
-          followPromptMessage: auto.followPromptMessage,
-          followPromptButtonLabel: auto.followPromptButtonLabel,
-          wholeWordMatch: auto.wholeWordMatch,
-          isActive: false,
-        }),
       });
       const data = await res.json();
       if (data.success) void fetchAutomations();
@@ -576,7 +553,7 @@ export default function CampaignsPage() {
                       />
                       <div className="absolute right-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
                         <button
-                          onClick={() => void duplicateAutomation(auto)}
+                          onClick={() => void duplicateAutomation(auto.id)}
                           className="block w-full px-3 py-2 text-left text-sm text-foreground hover:bg-surface-hover"
                         >
                           Duplicate
