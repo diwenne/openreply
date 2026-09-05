@@ -7,8 +7,8 @@
  * replied to, never DM'd.
  *
  * This sweep is deliberately narrow. For each active campaign it looks only at
- * that campaign's post, only at recent comments, and acts on a comment ONLY when
- * both are true:
+ * that campaign's post, only at comments created after the campaign, and acts
+ * on a comment ONLY when both are true:
  *   1. the comment matches the campaign keyword, and
  *   2. the account owner has not already replied to it.
  * The reply check reads the comment's actual replies on Instagram, so a comment
@@ -34,7 +34,7 @@ import {
   type InstagramComment,
 } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
-import { isCommentRecoveryCampaign } from "@/lib/polling/recovery-mode";
+import { getCampaignCommentSinceMs } from "@/lib/polling/comment-window";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 
 // Only consider comments from the last few days — older ones are outside
@@ -51,7 +51,6 @@ interface SweepStat {
   keywords: string;
   matched: number;
   alreadyReplied: number;
-  ownerRepliesBypassed: number;
   enqueued: number;
   errors: string[];
 }
@@ -69,6 +68,7 @@ export async function reconcileComments(): Promise<void> {
     select: {
       id: true,
       name: true,
+      createdAt: true,
       postId: true,
       matchAnyPost: true,
       matchAnyWord: true,
@@ -87,17 +87,20 @@ export async function reconcileComments(): Promise<void> {
     },
   });
 
-  const sinceMs = Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000;
+  const lookbackSinceMs = Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000;
   const tokenCache = new Map<string, string | null>();
 
   for (const automation of automations) {
+    const sinceMs = getCampaignCommentSinceMs(
+      lookbackSinceMs,
+      automation.createdAt
+    );
     const stat = await sweepCampaign(automation, sinceMs, tokenCache).catch(
       (error): SweepStat => ({
         campaign: automation.name,
         keywords: automation.keywords.join(","),
         matched: 0,
         alreadyReplied: 0,
-        ownerRepliesBypassed: 0,
         enqueued: 0,
         errors: [errMessage(error)],
       })
@@ -134,7 +137,6 @@ async function sweepCampaign(
       : automation.keywords.join(","),
     matched: 0,
     alreadyReplied: 0,
-    ownerRepliesBypassed: 0,
     enqueued: 0,
     errors: [],
   };
@@ -151,17 +153,6 @@ async function sweepCampaign(
   }
   if (!accessToken) {
     stat.errors.push("Failed to decrypt access token");
-    return stat;
-  }
-
-  const recoveryMode = isCommentRecoveryCampaign(automation.id);
-  // A recovery campaign targets comments that another tool already answered
-  // publicly. Sending another visible reply would duplicate that response, so
-  // fail closed until the operator turns public replies off for this campaign.
-  if (recoveryMode && automation.publicReplyEnabled) {
-    stat.errors.push(
-      "Comment recovery requires public replies to be disabled for this campaign"
-    );
     return stat;
   }
 
@@ -208,11 +199,8 @@ async function sweepCampaign(
         (r) => r.from?.id === account.instagramId
       );
       if (ownerReplied) {
-        if (!recoveryMode) {
-          stat.alreadyReplied += 1;
-          return false;
-        }
-        stat.ownerRepliesBypassed += 1;
+        stat.alreadyReplied += 1;
+        return false;
       }
       return true;
     });
@@ -228,15 +216,9 @@ async function sweepCampaign(
       where: {
         automationId: automation.id,
         commentId: { in: needsAction.map((c) => c.id) },
-        // Recovery is deliberately one-attempt-per-comment. A comment that
-        // ManyChat already DM'd will be rejected by Meta's one-private-reply
-        // rule; treating that failure as handled prevents retrying it every
-        // five minutes while recovery mode is enabled.
-        ...(recoveryMode
-          ? {}
-          : automation.publicReplyEnabled
-            ? { publicReplySentAt: { not: null } }
-            : { status: "SENT" }),
+        ...(automation.publicReplyEnabled
+          ? { publicReplySentAt: { not: null } }
+          : { status: "SENT" }),
       },
       select: { commentId: true },
     });
@@ -262,6 +244,7 @@ async function sweepCampaign(
         commenterName: c.from?.username,
         mediaId,
         source: "POLLING",
+        commentTimestamp: c.timestamp,
       });
       stat.enqueued += 1;
     }
@@ -283,7 +266,7 @@ async function recordSweep(
         workspaceId,
         source: "SYSTEM",
         level: stat.errors.length > 0 ? "WARNING" : "INFO",
-        message: `Comment sweep "${stat.campaign}" [${stat.keywords}]: ${stat.enqueued} enqueued, ${stat.matched} matched, ${stat.alreadyReplied} already replied, ${stat.ownerRepliesBypassed} owner replies bypassed`,
+        message: `Comment sweep "${stat.campaign}" [${stat.keywords}]: ${stat.enqueued} enqueued, ${stat.matched} matched, ${stat.alreadyReplied} already replied`,
         payload: { ...stat },
       },
     })

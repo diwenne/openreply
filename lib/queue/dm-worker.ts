@@ -27,6 +27,7 @@ import {
 } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { shouldProcessCommentForCampaign } from "@/lib/polling/comment-window";
 import { reserveDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
@@ -232,6 +233,16 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
   });
 
   for (const automation of automations) {
+    if (
+      !shouldProcessCommentForCampaign(
+        job.data.source,
+        job.data.commentTimestamp,
+        automation.createdAt
+      )
+    ) {
+      continue;
+    }
+
     // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
     const matchResult = automation.matchAnyWord
       ? { matched: true, matchedKeyword: null }

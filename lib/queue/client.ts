@@ -36,6 +36,9 @@ export interface ProcessCommentJob {
   // Which path enqueued this comment. Recorded in the shared ProcessedComment
   // dedup store so the reconciler can tell webhook- from polling-caught comments.
   source?: CommentSource;
+  // Required for polling jobs so the worker can enforce the campaign creation
+  // boundary even when a job was queued before a deployment or activation.
+  commentTimestamp?: string;
 }
 
 // Delivered when a user taps an opening DM's button — carries the reveal target.

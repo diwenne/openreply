@@ -109,29 +109,7 @@ Optional, for tuning the polling reconciler (defaults are fine to start):
 | --- | --- | --- |
 | `COMMENT_POLL_INTERVAL_MS` | `300000` | How often the worker sweeps for missed comments (5 min). |
 | `COMMENT_POLL_MAX_PER_SWEEP` | `30` | Max new comments each campaign acts on per sweep. Keep it conservative; higher gets closer to Instagram's rate limits. |
-| `COMMENT_POLL_LOOKBACK_HOURS` | `72` | How far back a sweep considers comments. |
-| `COMMENT_POLL_RECOVERY_CAMPAIGN_ID` | unset | One-time recovery for a single campaign when another tool already posted public replies. Set it only on the worker, disable that campaign's public replies first, and remove it after the backlog has been attempted. |
-
-### Recover comments another automation tool replied to publicly
-
-The normal polling reconciler skips a comment when the Instagram account has
-already posted a public reply. That is safe for routine operation, but it can
-hide a partial failure from another tool that posted the public reply and then
-failed to send the DM.
-
-For a one-time recovery, create or use a post-specific campaign with the same
-keyword and **turn public replies off**. Copy the campaign ID from the dashboard
-URL (`/campaigns/<id>`), then set this variable on the worker only:
-
-```text
-COMMENT_POLL_RECOVERY_CAMPAIGN_ID=<id>
-```
-
-The bypass applies only to that exact campaign. Each matching comment gets at
-most one recovery attempt: Meta delivers to comments that have not consumed
-their one private reply and rejects comments the previous tool already DM'd.
-The ordinary lookback and per-sweep caps still apply. Remove the variable and
-redeploy the worker as soon as the backlog has been attempted.
+| `COMMENT_POLL_LOOKBACK_HOURS` | `72` | How far back a sweep considers comments. A campaign never processes comments from before it was created. |
 
 ## The Meta app
 
