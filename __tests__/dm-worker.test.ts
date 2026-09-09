@@ -17,6 +17,7 @@ const {
     },
     dmLog: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
@@ -176,6 +177,7 @@ beforeEach(() => {
 
   mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
+  mockPrisma.dmLog.findFirst.mockResolvedValue(null);
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockResolvedValue({});
   mockPrisma.instagramAccount.findUnique.mockResolvedValue({
@@ -469,6 +471,96 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Hey commenter_user! Here is the offer:",
       "Get offer",
+      // media_101 -> "ig" + "media101" (the underscore is stripped).
+      "http://localhost:3000/r/abc123?src=igmedia101"
+    );
+  });
+});
+
+describe("DM Worker — per-post attribution", () => {
+  const realMediaId = "17912345678901234";
+
+  function automationWithLink() {
+    return {
+      ...mockAutomation,
+      postId: realMediaId,
+      dmMessage: "Hey {username}! Vote here: {link}",
+      linkButtonLabel: "Voter",
+      trackedLinks: [
+        {
+          slug: "abc123",
+          destinationUrl: "https://links.maisondeplume.com/films",
+        },
+      ],
+    };
+  }
+
+  it("carries ?src=ig<mediaId> on the tracked link button", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([automationWithLink()]);
+
+    const processor = getProcessor();
+    await processor(createMockJob({ ...mockJobData, mediaId: realMediaId }));
+
+    expect(mockSendPrivateReplyWithLinkButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      "Hey commenter_user! Vote here:",
+      "Voter",
+      `http://localhost:3000/r/abc123?src=ig${realMediaId}`
+    );
+  });
+
+  it("carries the src on the inline-link fallback when the button is rejected", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([automationWithLink()]);
+    mockSendPrivateReplyWithLinkButton.mockRejectedValue(
+      new Error("Button template rejected")
+    );
+
+    const processor = getProcessor();
+    await processor(createMockJob({ ...mockJobData, mediaId: realMediaId }));
+
+    expect(mockSendPrivateReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      `Hey commenter_user! Vote here: http://localhost:3000/r/abc123?src=ig${realMediaId}`
+    );
+  });
+
+  it("records the media id on the DM log so DMs can be counted per post", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([automationWithLink()]);
+
+    const processor = getProcessor();
+    await processor(createMockJob({ ...mockJobData, mediaId: realMediaId }));
+
+    expect(mockPrisma.dmLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        commentId: "comment_555",
+        mediaId: realMediaId,
+      }),
+    });
+  });
+
+  it("leaves the tracked link untouched when the job carries no media id", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...automationWithLink(), matchAnyPost: true },
+    ]);
+
+    const processor = getProcessor();
+    await processor(
+      createMockJob({
+        ...mockJobData,
+        mediaId: "",
+      })
+    );
+
+    expect(mockSendPrivateReplyWithLinkButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      "Hey commenter_user! Vote here:",
+      "Voter",
       "http://localhost:3000/r/abc123"
     );
   });

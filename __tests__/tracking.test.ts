@@ -6,9 +6,12 @@ import {
 } from "../lib/tracking/analytics";
 import {
   buildTrackedUrl,
+  buildTrackingSrc,
   extractFirstUrl,
+  isValidTrackingSrc,
   renderMessageWithTracking,
   replaceUrlWithTrackedPlaceholder,
+  TRACKING_SRC_PATTERN,
 } from "../lib/tracking/message";
 
 describe("tracked link messages", () => {
@@ -76,6 +79,95 @@ describe("tracked link messages", () => {
     expect(buildTrackedUrl("abc123", "https://manychat-alternative.com/")).toBe(
       "https://manychat-alternative.com/r/abc123"
     );
+  });
+});
+
+describe("per-post attribution src", () => {
+  it("builds an ig<mediaId> token from a real Instagram media id", () => {
+    // Instagram media ids are 17-18 digits: "ig" + id is 19-20 chars.
+    const src = buildTrackingSrc("17912345678901234");
+
+    expect(src).toBe("ig17912345678901234");
+    expect(src).toHaveLength(19);
+    expect(TRACKING_SRC_PATTERN.test(src as string)).toBe(true);
+  });
+
+  it("stays inside the 24-character whitelist for an 18-digit id", () => {
+    const src = buildTrackingSrc("179123456789012345");
+
+    expect(src).toBe("ig179123456789012345");
+    expect(TRACKING_SRC_PATTERN.test(src as string)).toBe(true);
+  });
+
+  it("lowercases and strips characters the whitelist rejects", () => {
+    expect(buildTrackingSrc("Media_101")).toBe("igmedia101");
+    expect(buildTrackingSrc("abc-DEF")).toBe("igabc-def");
+  });
+
+  it("truncates to 24 characters rather than dropping attribution", () => {
+    const src = buildTrackingSrc("1".repeat(40));
+
+    expect(src).toHaveLength(24);
+    expect(src).toBe(`ig${"1".repeat(22)}`);
+    expect(TRACKING_SRC_PATTERN.test(src as string)).toBe(true);
+  });
+
+  it("returns null when there is no media or nothing usable survives", () => {
+    expect(buildTrackingSrc(null)).toBeNull();
+    expect(buildTrackingSrc(undefined)).toBeNull();
+    expect(buildTrackingSrc("")).toBeNull();
+    expect(buildTrackingSrc("___")).toBeNull();
+  });
+
+  it("validates tokens against the destination whitelist", () => {
+    expect(isValidTrackingSrc("ig17912345678901234")).toBe(true);
+    expect(isValidTrackingSrc("IG179")).toBe(false);
+    expect(isValidTrackingSrc("ig_179")).toBe(false);
+    expect(isValidTrackingSrc("a".repeat(25))).toBe(false);
+    expect(isValidTrackingSrc("")).toBe(false);
+    expect(isValidTrackingSrc(null)).toBe(false);
+  });
+
+  it("appends a valid src to the tracked URL and ignores an invalid one", () => {
+    expect(
+      buildTrackedUrl("abc123", "https://reply.maisondeplume.com", "ig17912345678901234")
+    ).toBe("https://reply.maisondeplume.com/r/abc123?src=ig17912345678901234");
+
+    expect(
+      buildTrackedUrl("abc123", "https://reply.maisondeplume.com", "NOT VALID")
+    ).toBe("https://reply.maisondeplume.com/r/abc123");
+
+    expect(buildTrackedUrl("abc123", "https://reply.maisondeplume.com", null)).toBe(
+      "https://reply.maisondeplume.com/r/abc123"
+    );
+  });
+
+  it("renders the src into the message's tracked link", () => {
+    expect(
+      renderMessageWithTracking({
+        message: "Hey {username}, vote here: {link}",
+        commenterName: "Maya",
+        trackedLinks: [
+          { slug: "abc123", destinationUrl: "https://links.maisondeplume.com/films" },
+        ],
+        baseUrl: "https://reply.maisondeplume.com",
+        src: "ig17912345678901234",
+      })
+    ).toBe(
+      "Hey Maya, vote here: https://reply.maisondeplume.com/r/abc123?src=ig17912345678901234"
+    );
+  });
+
+  it("renders exactly as before when no src is supplied", () => {
+    expect(
+      renderMessageWithTracking({
+        message: "Vote here: {link}",
+        trackedLinks: [
+          { slug: "abc123", destinationUrl: "https://links.maisondeplume.com/films" },
+        ],
+        baseUrl: "https://reply.maisondeplume.com",
+      })
+    ).toBe("Vote here: https://reply.maisondeplume.com/r/abc123");
   });
 });
 

@@ -31,6 +31,7 @@ import {
 import { recordWorkerAlert } from "@/lib/ops/worker-health";
 import {
   buildTrackedUrl,
+  buildTrackingSrc,
   renderMessageWithTracking,
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
@@ -57,6 +58,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     mediaId,
   } = job.data;
   const requeueAttempt = job.data.requeueAttempt ?? 0;
+  // Per-post attribution: every tracked link sent for this comment carries
+  // ?src=ig<mediaId> so a vote on the destination site maps back to the reel.
+  const trackingSrc = buildTrackingSrc(mediaId);
 
   const automations = await prisma.automation.findMany({
     where: {
@@ -132,6 +136,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           commentText,
           commentId,
+          mediaId,
           matchedKeyword: matchResult.matchedKeyword,
           status: "FAILED",
           errorMessage: "No Instagram access token available",
@@ -163,6 +168,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           commentText,
           commentId,
+          mediaId,
           matchedKeyword: matchResult.matchedKeyword,
           status: "FAILED",
           errorMessage: "Failed to decrypt Instagram access token",
@@ -188,6 +194,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           commentText,
           commentId,
+          mediaId,
           matchedKeyword: matchResult.matchedKeyword,
           status: "PENDING",
           attempts: job.attemptsMade + 1,
@@ -227,6 +234,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: chosen,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          src: trackingSrc,
         });
         await sendCommentReply(accessToken, commentId, publicReply);
         await prisma.dmLog.update({
@@ -380,7 +388,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             message: automation.dmMessage,
             commenterName,
           }) || "Here's your link:";
-        const trackedUrl = buildTrackedUrl(automation.trackedLinks[0].slug);
+        const trackedUrl = buildTrackedUrl(
+          automation.trackedLinks[0].slug,
+          undefined,
+          trackingSrc
+        );
 
         try {
           await sendPrivateReplyWithLinkButton(
@@ -402,6 +414,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
               message: automation.dmMessage,
               commenterName,
               trackedLinks: [automation.trackedLinks[0]],
+              src: trackingSrc,
             }) || `${bodyText}\n${trackedUrl}`;
           await sendPrivateReply(
             accessToken,
@@ -415,6 +428,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          src: trackingSrc,
         });
         await sendPrivateReply(
           accessToken,
@@ -496,12 +510,30 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   // instead of only firing once per person.
   const dedupeId = `reveal:${userId}`;
 
-  // Personalize {username} from the opening DM log for this user, if present.
-  const openingLog = await prisma.dmLog.findFirst({
-    where: { automationId: automation.id, commenterId: userId },
-    select: { commenterName: true },
-  });
+  // Personalize {username} from the opening DM log for this user, if present,
+  // and recover the post they commented on so the reveal link keeps the same
+  // per-post attribution as the opening DM. Button-tap rows never carry a
+  // media id, hence the newest row that has one; a story-reply origin has
+  // none at all, in which case no src is added (behaviour unchanged).
+  const [openingLog, sourceLog] = await Promise.all([
+    prisma.dmLog.findFirst({
+      where: { automationId: automation.id, commenterId: userId },
+      orderBy: { createdAt: "desc" },
+      select: { commenterName: true },
+    }),
+    prisma.dmLog.findFirst({
+      where: {
+        automationId: automation.id,
+        commenterId: userId,
+        mediaId: { not: null },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { mediaId: true },
+    }),
+  ]);
   const commenterName = openingLog?.commenterName ?? null;
+  const sourceMediaId = sourceLog?.mediaId ?? null;
+  const trackingSrc = buildTrackingSrc(sourceMediaId);
 
   let accessToken: string;
   try {
@@ -524,6 +556,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         commenterName,
         commentText: "(button tap)",
         commentId: dedupeId,
+        mediaId: sourceMediaId,
         status: "SKIPPED_PLAN_LIMIT",
         errorMessage: `Monthly DM limit reached (${usage.limit})`,
       },
@@ -542,7 +575,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
         }) || "Here's your link:";
-      const trackedUrl = buildTrackedUrl(primaryLink.slug);
+      const trackedUrl = buildTrackedUrl(primaryLink.slug, undefined, trackingSrc);
 
       try {
         await sendDirectMessageWithLinkButton(
@@ -564,6 +597,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
             message: automation.dmMessage,
             commenterName,
             trackedLinks: [primaryLink],
+            src: trackingSrc,
           }) || `${bodyText}\n${trackedUrl}`;
         await sendDirectMessage(
           accessToken,
@@ -577,6 +611,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         message: automation.dmMessage,
         commenterName,
         trackedLinks: automation.trackedLinks,
+        src: trackingSrc,
       });
       await sendDirectMessage(
         accessToken,
@@ -597,6 +632,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         commenterName,
         commentText: "(button tap)",
         commentId: dedupeId,
+        mediaId: sourceMediaId,
         status: "SENT",
         dmSentAt: new Date(),
       },
@@ -616,6 +652,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         commenterName,
         commentText: "(button tap)",
         commentId: dedupeId,
+        mediaId: sourceMediaId,
         status: "FAILED",
         errorMessage: formatError(error),
       },

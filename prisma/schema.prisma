@@ -204,6 +204,10 @@ model DmLog {
   commentText   String
   commentId     String
   matchedKeyword String?
+  // The Instagram media (post/reel) the comment was left on. Null for
+  // story-reply DMs and for button-tap reveal rows that could not be traced
+  // back to an originating comment. Lets DMs be counted per post.
+  mediaId       String?
   // For story-reply DMs: the story that was replied to. The reply text itself
   // is never stored — only the matched keyword identifies the trigger.
   storyId       String?
@@ -230,6 +234,7 @@ model DmLog {
   @@index([automationId])
   @@index([instagramAccountId])
   @@index([status])
+  @@index([automationId, mediaId])
 }
 
 // Every comment the system has seen, from either the webhook or the polling
@@ -272,6 +277,9 @@ model LinkClick {
   automationId       String
   instagramAccountId String
   trackedLinkId      String
+  // Per-post attribution token carried on the short link (`?src=ig<mediaId>`),
+  // validated against ^[a-z0-9-]{1,24}$ before it is stored or forwarded.
+  src                String?
   ipHash             String?
   userAgent          String?
   referrer           String?
@@ -288,6 +296,7 @@ model LinkClick {
   @@index([trackedLinkId])
   @@index([createdAt])
   @@index([workspaceId, createdAt])
+  @@index([src])
 }
 
 model WebhookEvent {
