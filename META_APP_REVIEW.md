@@ -9,6 +9,13 @@ OpenReply uses the official Instagram API to send a private reply to someone who
 - `instagram_business_basic`
 - `instagram_business_manage_comments`
 - `instagram_business_manage_messages`
+- `instagram_business_manage_insights`
+
+These four are the exact list sent in the Instagram Business Login authorization
+URL (`getAuthorizationUrl` in `lib/meta/oauth.ts`). Add every one of them to the
+app's "Instagram business login" permissions in the Meta dashboard, otherwise
+the consent screen drops the missing ones silently and the resulting token can
+never call the endpoint that needs them.
 
 ## Permission justifications
 
@@ -19,6 +26,17 @@ Paste these into the App Review request, adjusted to your wording.
 `instagram_business_manage_comments`. When a follower comments a keyword the account owner configured on the owner's own post or reel, we receive the comment through the comments webhook and, if the owner enabled it, post a public reply under that comment. We only act on comments on the connecting account's own media.
 
 `instagram_business_manage_messages`. After a follower comments a configured keyword, we send that follower a one-time private reply with content the account owner set up, typically a link or answer the follower asked for by commenting. This is the standard Instagram comment-to-DM flow. We send one reply per matching comment and respect Meta's rate limits.
+
+`instagram_business_manage_insights`. We read the insights (reach, plays, saves, shares, comment counts) of the connected account's own reels and posts, and only those, to build the campaign dashboard the account owner sees inside the app. Each campaign is bound to a post, so the owner needs the post's own reach next to the DMs and link clicks that post produced in order to judge whether the campaign worked. We never read insights for accounts other than the one that authorized us, we never read follower-level or demographic data about individual people, and the numbers are shown only to the workspace that connected the account.
+
+### How the campaign dashboard uses insights
+
+Every DM we send carries a tracked short link with a per-post attribution token
+(`?src=ig<media_id>`), and every click is stored with that token. Insights supply
+the denominator: reach and plays for the same media id. Together they turn the
+dashboard from "we sent N DMs" into "this reel reached X people, produced N DMs
+and C clicks". That is the whole reason the permission is requested — it is not
+used for any audience analysis, export, or resale.
 
 ## Screencast script
 
@@ -38,6 +56,13 @@ Reviewers want to see the permission produce a real result for a real user. This
 - The app never scrapes Instagram and never asks for a password.
 - It only sends a reply when someone comments on the connected account's own content.
 - Tokens are encrypted at rest with AES-256-GCM.
+- Granted permissions are not stored in our database: `InstagramAccount` keeps
+  only the encrypted token and its expiry, so the token itself is the single
+  source of truth for what was granted. Consequence: after the scope list
+  changes, an account connected under the old list keeps a token without the new
+  permission until its owner reconnects from Settings (which re-runs the consent
+  screen and overwrites `accessToken`). There is nothing to migrate, but there is
+  something to redo — see the reconnection note in docs/setup.md.
 - Users can disconnect Instagram from Settings.
 - Per-account rate limiting and deduplication prevent spammy behavior.
 

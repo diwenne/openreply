@@ -168,6 +168,20 @@ No trailing slash. If this is missing or wrong, connecting an account fails with
 
 You do not need the "Embed URL" that Meta shows here. OpenReply builds its own login URL. Users connect by opening your app, going to Settings, and clicking Connect Instagram.
 
+The login URL requests these permissions (see `getAuthorizationUrl` in `lib/meta/oauth.ts`):
+`instagram_business_basic`, `instagram_business_manage_messages`,
+`instagram_business_manage_comments`, `instagram_business_manage_insights`.
+Every one of them must also be enabled on the app in the Meta dashboard, or the
+consent screen quietly drops it.
+
+**After the permission list changes, already-connected accounts must reconnect.**
+OpenReply stores no scope list of its own — the access token is the only record
+of what was granted — so an account connected before a scope was added keeps a
+token without it, and calls needing that scope fail with a Meta permission error
+until its owner opens Settings and clicks Connect Instagram again. Reconnecting
+overwrites the stored token in place; campaigns, logs and tracked links are
+untouched.
+
 ### Step 8: Configure the webhook
 
 Still in the Instagram product, find the Configure webhooks step.
