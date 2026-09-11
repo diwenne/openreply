@@ -89,12 +89,12 @@ function ReplyPreview() {
           <span className="or-active">Active</span>
         </div>
         <div className="or-post">
-          <span className="or-mono">The weekend project</span>
+          <span className="or-mono">Campaign: New drop</span>
           <p>
-            A little inspiration.
-            <br />A place to begin.
+            Comment GUIDE below
+            <br />and I’ll send you the link.
           </p>
-          <span>Comment GUIDE for our starter guide.</span>
+          <span>Keyword: GUIDE</span>
           <div className="or-post-lines" aria-hidden="true">
             <i />
             <i />
@@ -107,7 +107,7 @@ function ReplyPreview() {
           <span className="or-avatar or-avatar-small">M</span>
           <div>
             <strong>maya.creates</strong>
-            <p>GUIDE please! This is just what I needed.</p>
+            <p>GUIDE! need this 😍</p>
           </div>
         </div>
         <div className="or-match">
@@ -120,12 +120,9 @@ function ReplyPreview() {
         </div>
         <div className="or-message">
           <span className="or-mono">Sunday studio → Maya</span>
-          <p>
-            Hey Maya! Here’s the guide. Hope it helps you make something you
-            love.
-          </p>
+          <p>Hey Maya! Here’s the link 👇</p>
           <span className="or-message-link">
-            Get the starter guide <span aria-hidden="true">↗</span>
+            Shop the new drop <span aria-hidden="true">↗</span>
           </span>
         </div>
         <div className="or-delivered">
@@ -146,29 +143,29 @@ const steps = [
     "Choose Zernio or your own Meta app, then connect an Instagram Business or Creator account.",
   ],
   [
-    "Give the conversation a starting point",
+    "Set up a campaign",
     "Pick a post or reel, add keywords, and write the private reply. Add a public reply or tracked link buttons if you need them.",
   ],
   [
-    "Let OpenReply handle the follow-through",
+    "OpenReply handles the rest",
     "Incoming events trigger your campaigns. A background worker queues, rate-limits, and logs each send, with retries and comment reconciliation.",
   ],
 ];
 const features = [
   [
-    "A reply that sounds like you",
+    "Custom reply messages",
     "Write your own messages, personalize with a username, and use up to two tracked link buttons.",
   ],
   [
-    "More ways to start",
+    "Multiple triggers",
     "Trigger campaigns from post comments, incoming DMs, and text replies to Stories.",
   ],
   [
-    "An inbox for the next message",
+    "Inbox",
     "Read conversations and reply from OpenReply, within Instagram’s messaging window.",
   ],
   [
-    "A record of every send",
+    "Delivery logs",
     "See sent, skipped, and failed messages, with reasons. Follow tracked link clicks back to a campaign.",
   ],
 ];
@@ -205,7 +202,10 @@ export default async function Home() {
               {stars !== null && <span>{formatStars(stars)}</span>}
             </a>
           </nav>
-          <a className="or-button or-button-small" href={GITHUB_URL}>
+          <a className="or-nav-signin" href="/login">
+            Sign in
+          </a>
+          <a className="or-button or-button-small" href="/login">
             Get started <span aria-hidden="true">↗</span>
           </a>
         </div>
@@ -213,18 +213,14 @@ export default async function Home() {
       <main id="main">
         <section className="or-container or-hero">
           <div className="or-hero-copy">
-            <p className="or-eyebrow">Open source. Made for Instagram.</p>
             <h1>
-              A comment starts it.
+              Turn Instagram comments
               <br />
-              <span>
-                You take it
-                <br className="or-desktop-break" /> from there.
-              </span>
+              into private replies.
             </h1>
             <p className="or-lead">
-              Turn “send me the link” into a private reply. OpenReply sends your
-              DM when someone comments a keyword on your post or reel.
+              Someone comments a keyword on your post or reel, OpenReply sends
+              them a DM automatically. Free, open source, self-hosted.
             </p>
             <div className="or-actions">
               <a className="or-button or-button-primary" href={SETUP_DOCS_URL}>
@@ -251,12 +247,7 @@ export default async function Home() {
           <div className="or-sheet">
             <section id="how" className="or-section or-how">
               <div>
-                <p className="or-eyebrow">From interest to conversation</p>
-                <h2>
-                  The right reply.
-                  <br />
-                  Without the copy-paste.
-                </h2>
+                <h2>How it works</h2>
                 <p>
                   Send a product link, share a resource, or deliver your latest
                   guide. You decide what starts the conversation and what
@@ -277,8 +268,7 @@ export default async function Home() {
             </section>
             <section id="features" className="or-section">
               <div className="or-section-intro">
-                <p className="or-eyebrow">The conversation stays yours</p>
-                <h2>A small tool, with the useful parts built in.</h2>
+                <h2>Features</h2>
               </div>
               <div className="or-feature-grid">
                 {features.map(([title, description]) => (
@@ -291,7 +281,6 @@ export default async function Home() {
             </section>
             <section className="or-technical">
               <div>
-                <p className="or-eyebrow">Built to run on your terms</p>
                 <h2>
                   Open code.
                   <br />A system you can inspect.
@@ -325,7 +314,6 @@ export default async function Home() {
             </section>
             <section id="setup" className="or-section">
               <div className="or-section-intro">
-                <p className="or-eyebrow">Two ways to connect</p>
                 <h2>Self-host OpenReply. Choose your connection.</h2>
                 <p>
                   Both options need your own web app, background worker,
@@ -393,8 +381,7 @@ export default async function Home() {
             </section>
             <section className="or-section or-faq">
               <div>
-                <p className="or-eyebrow">Before you start</p>
-                <h2>A few good questions.</h2>
+                <h2>FAQ</h2>
               </div>
               <div>
                 <details>
@@ -457,11 +444,8 @@ export default async function Home() {
           </div>
         </div>
         <section className="or-container or-closing">
-          <p className="or-eyebrow">Your next conversation starts here</p>
           <h2>
-            Make “send me the link”
-            <br />
-            the easy part.
+            Set up your first campaign
           </h2>
           <p>Clone it, connect Instagram, and write your first reply.</p>
           <div className="or-actions">

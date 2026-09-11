@@ -90,6 +90,20 @@
   height: 16px;
   fill: currentColor;
 }
+.or-nav-signin {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--or-muted);
+  white-space: nowrap;
+}
+.or-nav-signin:hover {
+  color: var(--or-ink);
+}
+@media (max-width: 1000px) {
+  .or-nav-signin {
+    display: none;
+  }
+}
 .or-button {
   display: inline-flex;
   align-items: center;

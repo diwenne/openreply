@@ -1,14 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-
-/**
- * The public demo, and the only host this notice ever appears on. This repo is
- * something other people clone and deploy, and a self-hoster's instance is not
- * a demo — naming this domain on their site would tell their visitors the
- * opposite of the truth.
- */
-const DEMO_HOST = "diwen.openreply.dev";
+import { DEMO_HOST } from "@/lib/env";
 
 const DISMISS_KEY = "openreply:demo-notice-dismissed";
 const SETUP_DOCS_URL =

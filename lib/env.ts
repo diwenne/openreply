@@ -51,6 +51,30 @@ export function getMetaGraphApiVersion(): string {
 }
 
 /**
+ * The public demo, and the only host where sign-in is blocked. This repo is
+ * something other people clone and deploy; a self-hoster's own domain must
+ * never match this and must never be blocked from logging in — that's the
+ * entire point of self-hosting. Keep this in sync with
+ * components/demo-notice.tsx, which uses the same host for its banner.
+ */
+export const DEMO_HOST = "diwen.openreply.dev";
+
+/**
+ * True when the current request is hitting the public demo host. Sign-in is
+ * blocked there so the demo can't be mistaken for a real account — anyone who
+ * wants an account instead clones the repo and runs their own instance.
+ *
+ * Reads the incoming Host header rather than NEXTAUTH_URL/an env flag, so a
+ * self-hosted deployment never accidentally inherits demo behavior just
+ * because it copied an env var from this repo.
+ */
+export async function isPublicDemoHost(): Promise<boolean> {
+  const { headers } = await import("next/headers");
+  const host = (await headers()).get("host") ?? "";
+  return host.split(":")[0].toLowerCase() === DEMO_HOST;
+}
+
+/**
  * Optional sign-in allowlist.
  *
  * A self-hosted instance on a public domain is open to signup: the email
