@@ -186,9 +186,6 @@ export default async function Home() {
           <nav aria-label="Main navigation">
             <a href="#how">How it works</a>
             <a href="#setup">Self-host it</a>
-            <a href={GITHUB_URL}>
-              GitHub <span aria-hidden="true">↗</span>
-            </a>
             <a
               className="or-stars"
               href={GITHUB_URL}
