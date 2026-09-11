@@ -57,7 +57,7 @@ export function getMetaGraphApiVersion(): string {
  * entire point of self-hosting. Keep this in sync with
  * components/demo-notice.tsx, which uses the same host for its banner.
  */
-export const DEMO_HOST = "diwen.openreply.dev";
+export const DEMO_HOST = "openreply.diwen.dev";
 
 /**
  * True when the current request is hitting the public demo host. Sign-in is
