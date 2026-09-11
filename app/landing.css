@@ -90,6 +90,11 @@
   height: 16px;
   fill: currentColor;
 }
+.or-nav-cta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
 .or-nav-signin {
   font-size: 14px;
   font-weight: 500;

@@ -202,12 +202,14 @@ export default async function Home() {
               {stars !== null && <span>{formatStars(stars)}</span>}
             </a>
           </nav>
-          <a className="or-nav-signin" href="/login">
-            Sign in
-          </a>
-          <a className="or-button or-button-small" href="/login">
-            Get started <span aria-hidden="true">↗</span>
-          </a>
+          <div className="or-nav-cta">
+            <a className="or-nav-signin" href="/login">
+              Sign in
+            </a>
+            <a className="or-button or-button-small" href="/login">
+              Get started <span aria-hidden="true">↗</span>
+            </a>
+          </div>
         </div>
       </header>
       <main id="main">
