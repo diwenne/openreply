@@ -32,7 +32,7 @@ import {
   type InstagramContext,
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
-import { reserveDMSlot } from "@/lib/utils/rate-limiter";
+import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
   reserveWorkspaceDMSend,
@@ -714,6 +714,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         },
       });
     } catch (error) {
+      // The rate slot was reserved before the send; this send did not deliver a
+      // DM, so hand the slot back instead of burning it (and burning more on
+      // each BullMQ retry) until the hourly TTL expires.
+      if (rateLimit?.reserved) {
+        await releaseDMSlot(instagramAccountId);
+      }
       await releaseWorkspaceDMReservation(
         automation.workspaceId,
         usage.periodStart
