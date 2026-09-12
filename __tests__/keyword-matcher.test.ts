@@ -147,6 +147,43 @@ describe("matchKeywords — partial matching", () => {
   });
 });
 
+describe("matchKeywords — numeric keyword / letter-O homoglyph", () => {
+  // Production bug: a "08" campaign never fired for a real commenter who
+  // typed "O8" (capital letter O, not the digit zero) — visually identical
+  // on most fonts, and mobile autocapitalize compounds it on a leading "o".
+  // matchKeywords silently returned unmatched, indistinguishable from any
+  // other non-matching comment, so nothing surfaced until someone reported
+  // "commented and got no reply".
+  it("matches a numeric keyword when the comment uses letter O for zero", () => {
+    expect(matchKeywords("O8", ["08"], true).matched).toBe(true);
+    expect(matchKeywords("o8", ["08"], true).matched).toBe(true);
+  });
+
+  it("matches the digit form as before", () => {
+    expect(matchKeywords("08", ["08"], true).matched).toBe(true);
+  });
+
+  it("matches the O-typo embedded in a sentence", () => {
+    expect(matchKeywords("comentei O8 aqui", ["08"], true).matched).toBe(true);
+  });
+
+  it("returns the original keyword, not the folded comparison string", () => {
+    const result = matchKeywords("O8", ["08"], true);
+    expect(result.matchedKeyword).toBe("08");
+  });
+
+  it("does not fold O/0 for a non-numeric (word) keyword", () => {
+    // "gordo" contains "o", but the keyword "adoro" is a word, not a number —
+    // the fold must never apply here.
+    expect(matchKeywords("eu gordo", ["adoro"], true).matched).toBe(false);
+  });
+
+  it("still requires a whole-word numeric match, not a substring", () => {
+    // "108" must not match keyword "08" just because folding lines up digits.
+    expect(matchKeywords("108", ["08"], true).matched).toBe(false);
+  });
+});
+
 describe("matchKeywords — edge cases", () => {
   it("should return false for empty comment text", () => {
     const result = matchKeywords("", ["link"], true);

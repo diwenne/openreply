@@ -21,6 +21,29 @@ export interface KeywordMatchResult {
 }
 
 /**
+ * A trigger keyword that is purely digits (optionally mixed with the letter
+ * "o"/"O", the character it gets confused with) — e.g. "08", "17".
+ */
+function isNumericLikeKeyword(cleanedKeyword: string): boolean {
+  return /^[0-9oO]+$/.test(cleanedKeyword);
+}
+
+/**
+ * Fold the letter O into the digit 0. Commenters routinely type "O8" for a
+ * "08" trigger word — same glyph on most fonts, and mobile autocapitalize
+ * turns a leading "o" into "O" on top of that. Confirmed in production: a
+ * numeric campaign keyword silently dropped every comment spelled with the
+ * letter instead of the digit, with no error anywhere (matchKeywords just
+ * returns unmatched, same as any other non-matching comment).
+ *
+ * Scoped to numeric-like keywords only (see isNumericLikeKeyword) so a real
+ * word keyword ("love", "more info") is never affected by this fold.
+ */
+function foldNumericHomoglyphs(value: string): string {
+  return value.replace(/o/gi, "0");
+}
+
+/**
  * Strip emojis and special characters from text, keeping only
  * letters (any script), numbers, and whitespace.
  */
@@ -65,8 +88,18 @@ export function matchKeywords(
 
     if (!cleanedKeyword) continue;
 
+    // Only numeric-like keywords get the O/0 fold — a word keyword compares
+    // exactly as before.
+    const numericLike = isNumericLikeKeyword(cleanedKeyword);
+    const compareText = numericLike
+      ? foldNumericHomoglyphs(cleanedText)
+      : cleanedText;
+    const compareKeyword = numericLike
+      ? foldNumericHomoglyphs(cleanedKeyword)
+      : cleanedKeyword;
+
     if (wholeWordMatch) {
-      const escapedKeyword = cleanedKeyword.replace(
+      const escapedKeyword = compareKeyword.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
       );
@@ -77,11 +110,11 @@ export function matchKeywords(
         `(?<![\\p{L}\\p{N}])${escapedKeyword}(?![\\p{L}\\p{N}])`,
         "iu"
       );
-      if (regex.test(cleanedText)) {
+      if (regex.test(compareText)) {
         return { matched: true, matchedKeyword: keyword };
       }
     } else {
-      if (cleanedText.includes(cleanedKeyword)) {
+      if (compareText.includes(compareKeyword)) {
         return { matched: true, matchedKeyword: keyword };
       }
     }
