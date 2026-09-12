@@ -7,10 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGet, mockEval, mockDel } = vi.hoisted(() => ({
+const { mockGet, mockEval, mockDel, mockDecr } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockEval: vi.fn(),
   mockDel: vi.fn(),
+  mockDecr: vi.fn(),
 }));
 
 vi.mock("ioredis", () => {
@@ -20,6 +21,7 @@ vi.mock("ioredis", () => {
     this.get = mockGet;
     this.eval = mockEval;
     this.del = mockDel;
+    this.decr = mockDecr;
     return this;
   });
   return { default: MockRedis };
@@ -31,6 +33,7 @@ import {
   checkRateLimit,
   incrementDMCounter,
   reserveDMSlot,
+  releaseDMSlot,
   RATE_LIMIT_MAX,
 } from "../lib/utils/rate-limiter";
 
@@ -132,5 +135,25 @@ describe("incrementDMCounter", () => {
 
     expect(mockEval).toHaveBeenCalled();
     expect(count).toBe(51);
+  });
+});
+
+describe("releaseDMSlot", () => {
+  it("hands a reserved slot back and returns the new count", async () => {
+    mockDecr.mockResolvedValue(49);
+
+    const count = await releaseDMSlot("account_123");
+
+    expect(mockDecr).toHaveBeenCalledWith("rate:dm:account_123");
+    expect(count).toBe(49);
+  });
+
+  it("clamps to zero and clears the key when nothing was reserved", async () => {
+    mockDecr.mockResolvedValue(-1);
+
+    const count = await releaseDMSlot("account_123");
+
+    expect(count).toBe(0);
+    expect(mockDel).toHaveBeenCalledWith("rate:dm:account_123");
   });
 });

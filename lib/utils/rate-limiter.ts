@@ -189,6 +189,34 @@ export async function reserveDMSlot(
 }
 
 /**
+ * Release a DM slot previously taken by reserveDMSlot.
+ *
+ * reserveDMSlot increments the hourly counter before the send, so concurrent
+ * jobs can't all pass the check at once. When that send then fails (closed
+ * messaging window, expired token, rejected reply) the reserved slot is never
+ * used and must be handed back. Otherwise a comment that never delivers a DM
+ * still burns one slot per attempt, and BullMQ's retries burn several. On a
+ * post with many failing sends the counter inflates past the real number of
+ * DMs and legitimate replies get skipped as rate-limited until the TTL expires.
+ *
+ * DECR is atomic and preserves the key's TTL, so the hourly window still resets
+ * when it originally would. A missing key (the window already rolled over)
+ * would decrement to -1 with no expiry, so that case is clamped back to zero.
+ */
+export async function releaseDMSlot(
+  instagramAccountId: string
+): Promise<number> {
+  const client = getRedis();
+  const key = `rate:dm:${instagramAccountId}`;
+  const next = await client.decr(key);
+  if (next < 0) {
+    await client.del(key);
+    return 0;
+  }
+  return next;
+}
+
+/**
  * Backwards-compatible helper for tests and admin scripts.
  * Prefer reserveDMSlot in workers.
  */

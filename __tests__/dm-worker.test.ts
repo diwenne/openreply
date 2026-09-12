@@ -12,6 +12,7 @@ const {
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
+  mockReleaseDMSlot,
   mockQueueAdd,
   mockReserveWorkspaceDMSend,
   mockReleaseWorkspaceDMReservation,
@@ -47,6 +48,7 @@ const {
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
+  mockReleaseDMSlot: vi.fn(),
   mockQueueAdd: vi.fn(),
   mockReserveWorkspaceDMSend: vi.fn(),
   mockReleaseWorkspaceDMReservation: vi.fn(),
@@ -96,6 +98,7 @@ vi.mock("@/lib/utils/keyword-matcher", () => ({
 
 vi.mock("@/lib/utils/rate-limiter", () => ({
   reserveDMSlot: mockReserveDMSlot,
+  releaseDMSlot: mockReleaseDMSlot,
 }));
 
 vi.mock("@/lib/billing/usage", () => ({
@@ -254,6 +257,7 @@ beforeEach(() => {
     shouldSkip: false,
     reserved: true,
   });
+  mockReleaseDMSlot.mockResolvedValue(0);
   mockReleaseWorkspaceDMReservation.mockResolvedValue({ count: 1 });
   mockSendPrivateReply.mockResolvedValue({
     recipient_id: "commenter_999",
@@ -345,6 +349,8 @@ describe("DM Worker — Full Pipeline", () => {
     );
     expect(mockReserveWorkspaceDMSend).toHaveBeenCalledWith("workspace_123");
     expect(mockReserveDMSlot).toHaveBeenCalledWith("ig_456", 0);
+    // A successful send keeps its slot; the release path is failure-only.
+    expect(mockReleaseDMSlot).not.toHaveBeenCalled();
     expect(mockDecryptToken).toHaveBeenCalledWith("encrypted_token_abc");
     expect(mockSendPrivateReply).toHaveBeenCalledWith(
       "decrypted_token",
@@ -900,6 +906,10 @@ describe("DM Worker — one private reply per comment", () => {
     await expect(processor(createMockJob())).rejects.toThrow(
       "The comment is invalid for a private reply"
     );
+
+    // The reserved rate slot must be handed back when the send fails, so a
+    // comment that never delivered a DM does not burn slots on each retry.
+    expect(mockReleaseDMSlot).toHaveBeenCalledWith("ig_456");
 
     // A text retry on the same comment would fail identically and overwrite the
     // real reason, so it must not be attempted.
