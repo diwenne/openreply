@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteProps) {
 
   const account = await getWorkspaceInstagramAccount(
     workspaceId,
-    request.nextUrl.searchParams.get("instagramAccountId")
+    request.nextUrl.searchParams.get("socialAccountId")
   );
   if (!account) {
     return NextResponse.json(
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteProps) {
       .map((m) => ({
         id: m.id,
         text: m.message ?? "",
-        fromMe: m.from?.id === account.instagramId,
+        fromMe: m.from?.id === account.externalId,
         fromUsername: m.from?.username ?? null,
         createdTime: m.created_time ?? null,
       }))

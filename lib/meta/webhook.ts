@@ -33,7 +33,8 @@ export function verifyWebhookSignature(
 }
 
 export interface WebhookCommentEvent {
-  instagramAccountId: string;
+  platform: "instagram" | "facebook";
+  socialAccountId: string;
   commentId: string;
   commentText: string;
   commenterId: string;
@@ -53,11 +54,19 @@ interface WebhookEntry {
       from?: {
         id?: string;
         username?: string;
+        name?: string;
       };
       media?: {
         id?: string;
       };
       media_id?: string;
+      // Facebook Page `feed` field only (doc confirmed 13/09): a comment
+      // arrives as item="comment", verb="add", with post_id instead of
+      // media_id and `message` instead of `text`.
+      item?: string;
+      verb?: string;
+      post_id?: string;
+      message?: string;
     };
   }>;
   messaging?: Array<{
@@ -77,14 +86,14 @@ interface WebhookEntry {
 }
 
 export interface WebhookPostbackEvent {
-  instagramAccountId: string;
+  socialAccountId: string;
   userId: string;
   payload: string;
   mid?: string;
 }
 
 export interface WebhookStoryReplyEvent {
-  instagramAccountId: string;
+  socialAccountId: string;
   senderId: string;
   messageId: string;
   text: string;
@@ -98,11 +107,13 @@ interface WebhookPayload {
 }
 
 export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent[] {
-  const events: WebhookCommentEvent[] = [];
+  if (payload.object === "instagram") return parseInstagramCommentEvents(payload);
+  if (payload.object === "page") return parseFacebookCommentEvents(payload);
+  return [];
+}
 
-  if (payload.object !== "instagram") {
-    return events;
-  }
+function parseInstagramCommentEvents(payload: WebhookPayload): WebhookCommentEvent[] {
+  const events: WebhookCommentEvent[] = [];
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -125,12 +136,56 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
       }
 
       events.push({
-        instagramAccountId: entry.id,
+        platform: "instagram",
+        socialAccountId: entry.id,
         commentId,
         commentText: value.text ?? "",
         commenterId,
         commenterName: value.from?.username,
         mediaId,
+      });
+    }
+  }
+
+  return events;
+}
+
+// Facebook Page comments arrive on the `feed` field (there is no separate
+// "comments" field like Instagram — doc confirmed 13/09,
+// graph-api/webhooks/reference/page). `item`/`verb` narrow it down to a new
+// top-level comment; edits and deletes are ignored, same as Instagram never
+// re-processing an edited comment.
+function parseFacebookCommentEvents(payload: WebhookPayload): WebhookCommentEvent[] {
+  const events: WebhookCommentEvent[] = [];
+
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== "feed") continue;
+
+      const value = change.value;
+      if (value?.item !== "comment" || value?.verb !== "add") continue;
+
+      const commentId = value?.comment_id ?? value?.id;
+      const postId = value?.post_id;
+      const commenterId = value?.from?.id;
+
+      if (!entry.id || !commentId || !postId || !commenterId) {
+        continue;
+      }
+
+      // Skip the Page's own comments (e.g. a reply the Page itself posted).
+      if (commenterId === entry.id) {
+        continue;
+      }
+
+      events.push({
+        platform: "facebook",
+        socialAccountId: entry.id,
+        commentId,
+        commentText: value.message ?? "",
+        commenterId,
+        commenterName: value.from?.name,
+        mediaId: postId,
       });
     }
   }
@@ -145,8 +200,9 @@ export function parseCommentEvents(payload: WebhookPayload): WebhookCommentEvent
  * story-reply keyword matches may leave a trace (see the webhook route).
  */
 export function payloadContainsMessages(payload: WebhookPayload): boolean {
-  if (payload.object !== "instagram") return false;
-
+  // Structural check, not Instagram-specific: a Page payload has no
+  // `messaging` array today (only `feed` is subscribed for Facebook), but
+  // this stays correct unconditionally if that ever changes.
   for (const entry of payload.entry ?? []) {
     for (const messaging of entry.messaging ?? []) {
       if (messaging.message) return true;
@@ -183,7 +239,7 @@ export function parseStoryReplyEvents(
       if (senderId === accountId) continue;
 
       events.push({
-        instagramAccountId: accountId,
+        socialAccountId: accountId,
         senderId,
         messageId: message.mid,
         text: message.text ?? "",
@@ -218,7 +274,7 @@ export function parsePostbackEvents(
       if (userId === accountId) continue;
 
       events.push({
-        instagramAccountId: accountId,
+        socialAccountId: accountId,
         userId,
         payload: postbackPayload,
         mid: messaging.postback?.mid,

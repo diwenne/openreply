@@ -42,7 +42,7 @@ export default function OverviewPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedAccountId !== "all") {
-      params.set("instagramAccountId", selectedAccountId);
+      params.set("socialAccountId", selectedAccountId);
     }
     params.set("count", count);
 

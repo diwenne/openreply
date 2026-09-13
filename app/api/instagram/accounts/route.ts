@@ -19,10 +19,14 @@ export async function GET() {
     );
   }
 
-  const instagramAccounts = await prisma.instagramAccount.findMany({
-    where: { workspaceId },
+  // Instagram only — this list feeds the inbox's account picker, and the
+  // inbox's conversations API (getConversations/sendDirectMessage) is an
+  // Instagram-only surface. Showing a Facebook Page here would be a dead end:
+  // picking it would 400 on every request.
+  const instagramAccounts = await prisma.socialAccount.findMany({
+    where: { workspaceId, platform: "INSTAGRAM" },
     orderBy: { connectedAt: "desc" },
-    select: { id: true, username: true, instagramId: true, name: true },
+    select: { id: true, username: true, externalId: true, platform: true, name: true },
   });
 
   return NextResponse.json({

@@ -94,7 +94,7 @@ export default function InboxPage() {
       if (!silent) setConvLoading(true);
       try {
         const res = await fetch(
-          `/api/instagram/conversations?instagramAccountId=${selectedAccountId}`,
+          `/api/instagram/conversations?socialAccountId=${selectedAccountId}`,
           { cache: "no-store" }
         );
         const data = await res.json();
@@ -145,7 +145,7 @@ export default function InboxPage() {
       if (!silent) setThreadLoading(true);
       try {
         const res = await fetch(
-          `/api/instagram/conversations/${conversationId}?instagramAccountId=${selectedAccountId}`,
+          `/api/instagram/conversations/${conversationId}?socialAccountId=${selectedAccountId}`,
           { cache: "no-store" }
         );
         const data = await res.json();
@@ -225,7 +225,7 @@ export default function InboxPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          instagramAccountId: selectedAccountId,
+          socialAccountId: selectedAccountId,
           recipientId: active.contact.id,
           text,
         }),

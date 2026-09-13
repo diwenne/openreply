@@ -36,7 +36,7 @@ interface DashboardStats {
     status: string;
     createdAt: string;
     automation: { name: string };
-    instagramAccount?: { username: string };
+    socialAccount?: { username: string };
   }>;
 }
 
@@ -48,7 +48,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedAccountId !== "all") {
-      params.set("instagramAccountId", selectedAccountId);
+      params.set("socialAccountId", selectedAccountId);
     }
 
     fetch(`/api/dashboard/stats${params.size ? `?${params}` : ""}`)
@@ -181,8 +181,8 @@ export default function DashboardPage() {
                     @{log.commenterName ?? "unknown"}
                   </p>
                   <p className="text-xs text-muted truncate">
-                    {log.instagramAccount
-                      ? `@${log.instagramAccount.username} · `
+                    {log.socialAccount
+                      ? `@${log.socialAccount.username} · `
                       : ""}
                     {log.commentText}
                   </p>

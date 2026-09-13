@@ -90,7 +90,8 @@ describe("parseCommentEvents", () => {
     const events = parseCommentEvents(payload);
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
-      instagramAccountId: "page_123",
+      platform: "instagram",
+      socialAccountId: "page_123",
       commentId: "comment_456",
       commentText: "I want the LINK!",
       commenterId: "user_789",
@@ -289,6 +290,116 @@ describe("parseCommentEvents", () => {
     const events = parseCommentEvents(payload);
     expect(events).toHaveLength(0);
   });
+
+  it("should parse a Facebook Page comment (feed field)", () => {
+    const payload = {
+      object: "page",
+      entry: [
+        {
+          id: "fb_page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "comment",
+                verb: "add",
+                comment_id: "fb_comment_456",
+                post_id: "fb_post_101",
+                message: "Paris",
+                from: { id: "fb_user_789", name: "Jane Doe" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const events = parseCommentEvents(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      platform: "facebook",
+      socialAccountId: "fb_page_123",
+      commentId: "fb_comment_456",
+      commentText: "Paris",
+      commenterId: "fb_user_789",
+      commenterName: "Jane Doe",
+      mediaId: "fb_post_101",
+    });
+  });
+
+  it("should ignore Facebook feed changes that aren't a new comment", () => {
+    const edited = {
+      object: "page",
+      entry: [
+        {
+          id: "fb_page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "comment",
+                verb: "edited",
+                comment_id: "fb_comment_456",
+                post_id: "fb_post_101",
+                message: "Paris",
+                from: { id: "fb_user_789", name: "Jane Doe" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseCommentEvents(edited)).toHaveLength(0);
+
+    const otherItem = {
+      object: "page",
+      entry: [
+        {
+          id: "fb_page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "reaction",
+                verb: "add",
+                post_id: "fb_post_101",
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseCommentEvents(otherItem)).toHaveLength(0);
+  });
+
+  it("should ignore the Facebook Page's own comments", () => {
+    const payload = {
+      object: "page",
+      entry: [
+        {
+          id: "fb_page_123",
+          time: 1234567890,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "comment",
+                verb: "add",
+                comment_id: "fb_comment_456",
+                post_id: "fb_post_101",
+                message: "thanks!",
+                from: { id: "fb_page_123", name: "Our Page" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseCommentEvents(payload)).toHaveLength(0);
+  });
 });
 
 function storyReplyPayload(
@@ -324,7 +435,7 @@ describe("parseStoryReplyEvents", () => {
     const events = parseStoryReplyEvents(payload);
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
-      instagramAccountId: "page_123",
+      socialAccountId: "page_123",
       senderId: "user_789",
       messageId: "mid_1",
       text: "MAISON",

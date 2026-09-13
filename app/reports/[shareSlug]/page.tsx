@@ -84,7 +84,11 @@ export default async function ReportPage({ params }: ReportPageProps) {
                 {report.campaign.name}
               </h1>
               <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
-                <span>@{report.campaign.instagramUsername}</span>
+                <span>
+                  {report.campaign.instagramUsername
+                    ? `@${report.campaign.instagramUsername}`
+                    : "Facebook Page"}
+                </span>
                 {report.campaign.goal && (
                   <>
                     <span>·</span>

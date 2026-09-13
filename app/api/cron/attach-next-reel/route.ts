@@ -30,19 +30,19 @@ export async function GET(request: NextRequest) {
 
   const pending = await prisma.automation.findMany({
     where: { pendingNextReel: true },
-    include: { instagramAccount: true },
+    include: { socialAccount: true },
   });
 
   // Group by connected account so we fetch each account's media only once.
   const byAccount = new Map<
     string,
-    { account: (typeof pending)[number]["instagramAccount"]; automations: typeof pending }
+    { account: (typeof pending)[number]["socialAccount"]; automations: typeof pending }
   >();
   for (const automation of pending) {
-    const key = automation.instagramAccountId;
+    const key = automation.socialAccountId;
     const entry = byAccount.get(key);
     if (entry) entry.automations.push(automation);
-    else byAccount.set(key, { account: automation.instagramAccount, automations: [automation] });
+    else byAccount.set(key, { account: automation.socialAccount, automations: [automation] });
   }
 
   let bound = 0;

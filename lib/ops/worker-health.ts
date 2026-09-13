@@ -23,7 +23,7 @@ export interface WorkerAlert {
   level: "warning" | "error";
   message: string;
   jobId?: string;
-  instagramAccountId?: string;
+  socialAccountId?: string;
   commentId?: string;
   createdAt: string;
 }

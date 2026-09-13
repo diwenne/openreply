@@ -19,7 +19,7 @@ interface DmLog {
   errorMessage: string | null;
   createdAt: string;
   automation: { name: string; keywords: string[] };
-  instagramAccount: { username: string };
+  socialAccount: { username: string };
 }
 
 interface Pagination {
@@ -53,7 +53,7 @@ export default function LogsPage() {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (selectedAccountId !== "all") {
-        params.set("instagramAccountId", selectedAccountId);
+        params.set("socialAccountId", selectedAccountId);
       }
 
       const res = await fetch(`/api/logs?${params}`);
@@ -176,7 +176,7 @@ export default function LogsPage() {
                       <span className="text-muted">{log.automation.name}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-muted">@{log.instagramAccount.username}</span>
+                      <span className="text-muted">@{log.socialAccount.username}</span>
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={log.status} />

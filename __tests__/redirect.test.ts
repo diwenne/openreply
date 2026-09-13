@@ -29,7 +29,7 @@ describe("tracked link redirect route", () => {
       automationId: "automation_123",
       destinationUrl: "https://example.com/offer",
       automation: {
-        instagramAccountId: "instagram_account_123",
+        socialAccountId: "instagram_account_123",
       },
     });
     mockPrisma.linkClick.create.mockResolvedValue({});
@@ -55,7 +55,7 @@ describe("tracked link redirect route", () => {
       data: expect.objectContaining({
         workspaceId: "workspace_123",
         automationId: "automation_123",
-        instagramAccountId: "instagram_account_123",
+        socialAccountId: "instagram_account_123",
         trackedLinkId: "link_123",
         userAgent: "vitest",
         referrer: "https://instagram.com/",
@@ -85,7 +85,7 @@ describe("tracked link redirect route", () => {
       workspaceId: "workspace_123",
       automationId: "automation_123",
       destinationUrl: "https://links.maisondeplume.com/films",
-      automation: { instagramAccountId: "instagram_account_123" },
+      automation: { socialAccountId: "instagram_account_123" },
     });
     mockPrisma.linkClick.create.mockResolvedValue({});
 
@@ -111,7 +111,7 @@ describe("tracked link redirect route", () => {
       workspaceId: "workspace_123",
       automationId: "automation_123",
       destinationUrl: "https://links.maisondeplume.com/films?utm_source=ig",
-      automation: { instagramAccountId: "instagram_account_123" },
+      automation: { socialAccountId: "instagram_account_123" },
     });
     mockPrisma.linkClick.create.mockResolvedValue({});
 
@@ -133,7 +133,7 @@ describe("tracked link redirect route", () => {
       workspaceId: "workspace_123",
       automationId: "automation_123",
       destinationUrl: "https://links.maisondeplume.com/films",
-      automation: { instagramAccountId: "instagram_account_123" },
+      automation: { socialAccountId: "instagram_account_123" },
     });
     mockPrisma.linkClick.create.mockResolvedValue({});
 
@@ -158,7 +158,7 @@ describe("tracked link redirect route", () => {
       workspaceId: "workspace_123",
       automationId: "automation_123",
       destinationUrl: "https://links.maisondeplume.com/films",
-      automation: { instagramAccountId: "instagram_account_123" },
+      automation: { socialAccountId: "instagram_account_123" },
     });
     mockPrisma.linkClick.create.mockResolvedValue({});
 

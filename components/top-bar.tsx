@@ -50,7 +50,9 @@ export default function TopBar({
         <p className="text-sm text-muted">
           {instagramAccountCount > 1
             ? `${instagramAccountCount} accounts`
-            : `@${instagramUsername}`}
+            : instagramUsername
+              ? `@${instagramUsername}`
+              : "Facebook Page"}
         </p>
       ) : (
         <a

@@ -23,7 +23,7 @@ export function getRedisConnection(): Redis {
 export type CommentSource = "WEBHOOK" | "POLLING";
 
 export interface ProcessCommentJob {
-  instagramAccountId: string;
+  socialAccountId: string;
   commentId: string;
   commentText: string;
   commenterId: string;
@@ -37,7 +37,7 @@ export interface ProcessCommentJob {
 
 // Delivered when a user taps an opening DM's button — carries the reveal target.
 export interface ProcessPostbackJob {
-  instagramAccountId: string;
+  socialAccountId: string;
   userId: string;
   payload: string;
   mid?: string;
@@ -46,7 +46,7 @@ export interface ProcessPostbackJob {
 // A keyword match on a story reply. The webhook route matches keywords before
 // enqueueing, so this job never carries the message text — only the match.
 export interface ProcessStoryReplyJob {
-  instagramAccountId: string;
+  socialAccountId: string;
   senderId: string;
   messageId: string;
   storyId?: string;

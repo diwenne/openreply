@@ -9,10 +9,11 @@ interface SettingsData {
     name: string;
     dmsSentThisPeriod: number;
   };
-  instagramAccount: {
+  socialAccount: {
     id: string;
-    username: string;
-    instagramId: string;
+    username: string | null;
+    externalId: string;
+    platform: "INSTAGRAM" | "FACEBOOK";
     tokenExpiresAt: string | null;
     webhookSubscribed: boolean;
   } | null;
@@ -74,16 +75,16 @@ export default function SettingsPage() {
     if (payload.success) setMembersData(payload.data);
   }
 
-  async function disconnectInstagram(instagramAccountId: string) {
+  async function disconnectInstagram(socialAccountId: string) {
     if (!confirm("Disconnect Instagram? Campaigns for this account will stop sending DMs.")) {
       return;
     }
 
-    setBusy(`disconnect:${instagramAccountId}`);
+    setBusy(`disconnect:${socialAccountId}`);
     await fetch("/api/instagram/disconnect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instagramAccountId }),
+      body: JSON.stringify({ socialAccountId }),
     });
     window.location.reload();
   }
@@ -167,7 +168,8 @@ export default function SettingsPage() {
           <div className="space-y-3 py-3">
             {accounts.length === 0 && (
               <p className="text-sm text-muted">
-                Connect an Instagram professional account to launch campaigns.
+                Connect an Instagram professional account or a Facebook Page to
+                launch campaigns.
               </p>
             )}
             {accounts.map((account) => (
@@ -177,13 +179,18 @@ export default function SettingsPage() {
               >
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    @{account.username}
+                    {account.username
+                      ? `@${account.username}`
+                      : (account.name ?? "Facebook Page")}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    Token expires{" "}
-                    {account.tokenExpiresAt
-                      ? new Date(account.tokenExpiresAt).toLocaleDateString()
-                      : "not available"}{" "}
+                    {account.platform === "FACEBOOK"
+                      ? "Facebook Page token (no expiry)"
+                      : `Token expires ${
+                          account.tokenExpiresAt
+                            ? new Date(account.tokenExpiresAt).toLocaleDateString()
+                            : "not available"
+                        }`}{" "}
                     · {account.webhookSubscribed ? "Webhook ready" : "Webhook pending"}
                   </p>
                 </div>
@@ -201,12 +208,22 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-border flex gap-3">
+        <div className="mt-6 pt-4 border-t border-border flex flex-wrap gap-3">
           <a
             href="/api/instagram/connect"
             className="px-4 py-2 rounded text-sm font-medium transition-colors bg-accent text-white hover:bg-accent-hover"
           >
-            {accounts.length > 0 ? "Connect another account" : "Connect Instagram"}
+            {accounts.some((a) => a.platform !== "FACEBOOK")
+              ? "Connect another Instagram account"
+              : "Connect Instagram"}
+          </a>
+          <a
+            href="/api/facebook/connect"
+            className="px-4 py-2 rounded text-sm font-medium transition-colors border border-border text-foreground hover:border-border-hover"
+          >
+            {accounts.some((a) => a.platform === "FACEBOOK")
+              ? "Connect another Facebook Page"
+              : "Connect Facebook Page"}
           </a>
         </div>
       </section>

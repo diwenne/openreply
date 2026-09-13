@@ -38,6 +38,7 @@ interface LoadedCampaign {
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
+  dmMessages: string[];
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
@@ -46,7 +47,7 @@ interface LoadedCampaign {
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
-  instagramAccountId: string;
+  socialAccountId: string;
   trackedLinks?: { destinationUrl: string }[];
 }
 
@@ -163,6 +164,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
 
   const [dmMessage, setDmMessage] = useState("");
+  const [dmMessages, setDmMessages] = useState<string[]>([]);
   const [linkOpen, setLinkOpen] = useState(false);
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
   const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
@@ -194,7 +196,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (cached.data !== null) setAvatarUrl(cached.data);
 
-    const params = new URLSearchParams({ instagramAccountId: selectedAccountId });
+    const params = new URLSearchParams({ socialAccountId: selectedAccountId });
     fetch(`/api/instagram/profile?${params}`)
       .then((r) => r.json())
       .then((d) => {
@@ -236,7 +238,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         const c = (payload.data as LoadedCampaign[]).find((x) => x.id === campaignId);
         if (!c) return setNotFound(true);
         setName(c.name);
-        setSelectedAccountId(c.instagramAccountId);
+        setSelectedAccountId(c.socialAccountId);
         const hasCommentTrigger =
           c.matchAnyPost || c.pendingNextReel || Boolean(c.postId);
         setTriggerScope(
@@ -265,6 +267,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
+        // dmMessages[0] duplicates the primary message above (see the submit
+        // payload) — only the rest are shown as separate "extra variant" rows.
+        setDmMessages(c.dmMessages?.length ? c.dmMessages.slice(1) : []);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
@@ -288,7 +293,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         const map: Record<string, string> = {};
         for (const a of payload.data as LoadedCampaign[]) {
           if (!a.postId) continue;
-          if (a.instagramAccountId !== selectedAccountId) continue;
+          if (a.socialAccountId !== selectedAccountId) continue;
           if (mode === "edit" && a.id === campaignId) continue;
           map[a.postId] = a.name;
         }
@@ -386,7 +391,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
     const payload = {
       name: name.trim() || `Campaign for @${username}`,
-      instagramAccountId: selectedAccountId,
+      socialAccountId: selectedAccountId,
       postId: triggerScope === "specific" ? postId : null,
       postUrl: triggerScope === "specific" ? postUrl : null,
       matchAnyPost: triggerScope === "any",
@@ -395,6 +400,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmMessage,
+      // Extra variants sent to the server ALWAYS include the primary message
+      // above as the first entry — the pool rotation server-side (dm-worker.ts)
+      // uses dmMessages as-is when non-empty, so the primary text must be in
+      // there itself or it would silently never be sent once variants exist.
+      dmMessages: (() => {
+        const extra = dmMessages.map((m) => m.trim()).filter(Boolean);
+        return extra.length > 0 ? [dmMessage.trim(), ...extra] : [];
+      })(),
       openingDmEnabled: sendOpeningDm,
       openingDmMessage: sendOpeningDm ? openingDmMessage : null,
       openingDmButtonLabel: sendOpeningDm ? openingDmButtonLabel : null,
@@ -653,7 +666,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <div className="rounded-lg border border-border p-2">
               <PostPicker
                 selectedPostId={postId}
-                instagramAccountId={selectedAccountId}
+                socialAccountId={selectedAccountId}
                 usedPostIds={usedPosts}
                 onSelect={handlePostSelect}
               />
@@ -830,6 +843,48 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
               maxLength={1000}
             />
+            <div className="space-y-2">
+              {dmMessages.map((msg, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    value={msg}
+                    onChange={(e) =>
+                      setDmMessages((prev) =>
+                        prev.map((m, idx) => (idx === i ? e.target.value : m))
+                      )
+                    }
+                    placeholder="Write another variant"
+                    maxLength={1000}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDmMessages((prev) => prev.filter((_, idx) => idx !== i))
+                    }
+                    className="shrink-0 px-2 text-muted hover:text-error"
+                    aria-label="Remove variant"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {dmMessages.length < 9 && (
+                <button
+                  type="button"
+                  onClick={() => setDmMessages((prev) => [...prev, ""])}
+                  className="text-xs font-medium text-accent hover:underline"
+                >
+                  + Add another variant
+                </button>
+              )}
+              {dmMessages.length > 0 && (
+                <p className="text-xs text-muted">
+                  One is picked at random each time (including the message
+                  above), so DMs don&apos;t all look identical.
+                </p>
+              )}
+            </div>
             {linkOpen ? (
               <div className="space-y-2">
                 <input

@@ -9,6 +9,10 @@ import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
 
 const INSTAGRAM_OAUTH_URL = "https://api.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
+// Facebook Login for Business — a different OAuth surface from Instagram-
+// Login above, even though both may live on the same Meta app.
+const FACEBOOK_OAUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth";
+const FACEBOOK_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
@@ -111,6 +115,87 @@ export async function exchangeCodeForToken(
   return {
     accessToken: data.access_token,
     userId: String(data.user_id),
+  };
+}
+
+// Scopes confirmed against Meta's official docs (13/09): pages_show_list +
+// pages_read_engagement + pages_manage_posts to list/post as the Page,
+// pages_manage_metadata to subscribe the Page to the `feed` webhook field,
+// pages_messaging for the Private Reply Send API.
+const FACEBOOK_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_posts",
+  "pages_manage_metadata",
+  "pages_messaging",
+].join(",");
+
+export function getFacebookAuthorizationUrl(
+  redirectUri: string,
+  state: string
+): string {
+  const params = new URLSearchParams({
+    client_id: requireEnv("FACEBOOK_APP_ID"),
+    redirect_uri: redirectUri,
+    scope: FACEBOOK_SCOPES,
+    response_type: "code",
+    state,
+  });
+
+  return `${FACEBOOK_OAUTH_URL}?${params.toString()}`;
+}
+
+export async function exchangeFacebookCodeForToken(
+  code: string,
+  redirectUri: string
+): Promise<{ accessToken: string; expiresIn: number }> {
+  const url = new URL(FACEBOOK_TOKEN_URL);
+  url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+  url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("code", code);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Facebook token exchange failed: ${error.error?.message || JSON.stringify(error)}`
+    );
+  }
+
+  const data = await response.json();
+  return {
+    accessToken: data.access_token,
+    // A short-lived user token's expiry — swapped for a long-lived one next
+    // (see getLongLivedFacebookUserToken), so a missing expires_in is fine.
+    expiresIn: data.expires_in ?? 3600,
+  };
+}
+
+// A Page access token derived from a LONG-LIVED user token effectively never
+// expires (Meta issues it with no expiry at all), unlike one derived from a
+// short-lived user token — this exchange is what makes that difference.
+export async function getLongLivedFacebookUserToken(
+  shortLivedToken: string
+): Promise<{ accessToken: string; expiresIn: number }> {
+  const url = new URL(FACEBOOK_TOKEN_URL);
+  url.searchParams.set("grant_type", "fb_exchange_token");
+  url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+  url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  url.searchParams.set("fb_exchange_token", shortLivedToken);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Facebook long-lived token exchange failed: ${error.error?.message || JSON.stringify(error)}`
+    );
+  }
+
+  const data = await response.json();
+  return {
+    accessToken: data.access_token,
+    expiresIn: data.expires_in ?? 5184000,
   };
 }
 

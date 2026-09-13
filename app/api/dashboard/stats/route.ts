@@ -24,18 +24,18 @@ export async function GET(request: NextRequest) {
   weekStart.setDate(weekStart.getDate() - 7);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const requestedInstagramAccountId =
-    request.nextUrl.searchParams.get("instagramAccountId");
+    request.nextUrl.searchParams.get("socialAccountId");
   const selectedAccountId =
     requestedInstagramAccountId && requestedInstagramAccountId !== "all"
       ? requestedInstagramAccountId
       : null;
   const accountFilter = selectedAccountId
-    ? { instagramAccountId: selectedAccountId }
+    ? { socialAccountId: selectedAccountId }
     : {};
 
   const [
     workspace,
-    instagramAccount,
+    socialAccount,
     instagramAccounts,
     totalAutomations,
     activeAutomations,
@@ -58,24 +58,26 @@ export async function GET(request: NextRequest) {
         dmsSentThisPeriod: true,
       },
     }),
-    prisma.instagramAccount.findFirst({
+    prisma.socialAccount.findFirst({
       where: { workspaceId },
       orderBy: { connectedAt: "desc" },
       select: {
         id: true,
         username: true,
-        instagramId: true,
+        externalId: true,
+        platform: true,
         tokenExpiresAt: true,
         webhookSubscribed: true,
       },
     }),
-    prisma.instagramAccount.findMany({
+    prisma.socialAccount.findMany({
       where: { workspaceId },
       orderBy: { connectedAt: "desc" },
       select: {
         id: true,
         username: true,
-        instagramId: true,
+        externalId: true,
+        platform: true,
         name: true,
         tokenExpiresAt: true,
         webhookSubscribed: true,
@@ -132,7 +134,7 @@ export async function GET(request: NextRequest) {
       take: 10,
       include: {
         automation: { select: { name: true } },
-        instagramAccount: { select: { username: true } },
+        socialAccount: { select: { username: true } },
       },
     }),
     userId
@@ -195,7 +197,7 @@ export async function GET(request: NextRequest) {
       userName: firstName,
       contactsCount: contactRows.length,
       workspace,
-      instagramAccount,
+      socialAccount,
       instagramAccounts,
       selectedInstagramAccountId: selectedAccountId,
       totalAutomations,

@@ -136,12 +136,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 export async function sendPrivateReply(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   commentId: string,
   message: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -166,14 +166,14 @@ export async function sendPrivateReply(
  */
 export async function sendPrivateReplyWithButton(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   commentId: string,
   text: string,
   buttonTitle: string,
   payload: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -209,14 +209,14 @@ export async function sendPrivateReplyWithButton(
  */
 export async function sendPrivateReplyWithLinkButton(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   commentId: string,
   text: string,
   buttonTitle: string,
   url: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -248,12 +248,12 @@ export async function sendPrivateReplyWithLinkButton(
  */
 export async function sendDirectMessage(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   userId: string,
   message: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -277,14 +277,14 @@ export async function sendDirectMessage(
  */
 export async function sendDirectMessageWithButton(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   userId: string,
   text: string,
   buttonTitle: string,
   payload: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -319,14 +319,14 @@ export async function sendDirectMessageWithButton(
  */
 export async function sendDirectMessageWithLinkButton(
   accessToken: string,
-  instagramAccountId: string,
+  socialAccountId: string,
   userId: string,
   text: string,
   buttonTitle: string,
   url: string
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase()}/${socialAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -389,6 +389,97 @@ export async function sendCommentReply(
       body: JSON.stringify({ message }),
     }
   );
+
+  return handleResponse(response);
+}
+
+// ─── Facebook Page (comment → Private Reply) ───────────────────────────────
+// Separate from the Instagram functions above: different base URL
+// (graph.facebook.com, not graph.instagram.com), different account concept
+// (a Page, not an IG professional account), same request shapes otherwise —
+// confirmed against Meta's official docs 13/09/2026.
+
+export interface FacebookPage {
+  id: string;
+  name: string;
+  access_token: string;
+}
+
+// GET /me/accounts with a Facebook USER token → every Page the user manages,
+// each with its own (page-scoped) access token — this is the token that goes
+// in SocialAccount.accessToken for a Facebook-platform row, not the user token.
+export async function listFacebookPages(
+  userAccessToken: string
+): Promise<FacebookPage[]> {
+  const url = new URL(`${facebookGraphBase()}/me/accounts`);
+  url.searchParams.set("access_token", userAccessToken);
+
+  const response = await fetch(url.toString());
+  const data = await handleResponse<{ data: FacebookPage[] }>(response);
+  return data.data;
+}
+
+export async function subscribeFacebookPageToWebhooks(
+  pageId: string,
+  pageAccessToken: string
+): Promise<{ success: boolean }> {
+  const response = await fetch(
+    `${facebookGraphBase()}/${pageId}/subscribed_apps`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${pageAccessToken}`,
+      },
+      // Facebook has no separate "comments" field like Instagram — a Page
+      // comment arrives on `feed` (filtered to item=comment in lib/meta/webhook.ts).
+      body: JSON.stringify({ subscribed_fields: ["feed"] }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+// Private Reply to a Page comment — POST /{page-id}/messages with
+// recipient.comment_id, same envelope as Instagram's sendPrivateReply. Meta's
+// own constraint (Messenger Platform docs, confirmed 13/09): one message per
+// comment, sent within 7 days of the comment — enforced by DmLog's existing
+// @@unique([automationId, commentId]) for the "one message" half; callers
+// should skip rather than call this for a comment older than 7 days.
+export async function sendFacebookPrivateReply(
+  accessToken: string,
+  pageId: string,
+  commentId: string,
+  message: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(`${facebookGraphBase()}/${pageId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      recipient: { comment_id: commentId },
+      message: { text: message },
+    }),
+  });
+
+  return handleResponse(response);
+}
+
+export async function sendFacebookCommentReply(
+  accessToken: string,
+  commentId: string,
+  message: string
+): Promise<{ id: string }> {
+  const response = await fetch(`${facebookGraphBase()}/${commentId}/replies`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ message }),
+  });
 
   return handleResponse(response);
 }
@@ -646,11 +737,11 @@ export async function refreshLongLivedToken(
 }
 
 export async function subscribeInstagramAccountToWebhooks(
-  instagramAccountId: string,
+  socialAccountId: string,
   accessToken: string
 ): Promise<{ success: boolean }> {
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/subscribed_apps`,
+    `${instagramGraphBase()}/${socialAccountId}/subscribed_apps`,
     {
       method: "POST",
       headers: {

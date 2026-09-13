@@ -83,11 +83,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await prisma.instagramAccount.upsert({
-      where: { instagramId },
+    await prisma.socialAccount.upsert({
+      where: { externalId: instagramId },
       create: {
         workspaceId: state.workspaceId,
-        instagramId,
+        platform: "INSTAGRAM",
+        externalId: instagramId,
         username: userInfo.username,
         name: userInfo.name,
         accessToken: encryptedToken,

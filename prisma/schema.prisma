@@ -83,7 +83,7 @@ model Workspace {
 
   members           WorkspaceMember[]
   invitations       WorkspaceInvitation[]
-  instagramAccounts InstagramAccount[]
+  socialAccounts    SocialAccount[]
   automations       Automation[]
   dmLogs            DmLog[]
   trackedLinks      TrackedLink[]
@@ -130,11 +130,19 @@ model WorkspaceInvitation {
   @@index([status])
 }
 
-model InstagramAccount {
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+}
+
+model SocialAccount {
   id                String   @id @default(cuid())
   workspaceId       String
-  instagramId       String   @unique
-  username          String
+  platform          Platform @default(INSTAGRAM)
+  // The Instagram business account id, or the Facebook Page id.
+  externalId        String   @unique
+  // Instagram only — null for Facebook Pages.
+  username          String?
   name              String?
   accessToken       String
   tokenExpiresAt    DateTime?
@@ -148,12 +156,13 @@ model InstagramAccount {
   linkClicks  LinkClick[]
 
   @@index([workspaceId])
+  @@index([platform])
 }
 
 model Automation {
   id                 String   @id @default(cuid())
   workspaceId        String
-  instagramAccountId String
+  socialAccountId    String
 
   name           String
   goal           String?
@@ -167,6 +176,7 @@ model Automation {
   keywords       String[]
   matchAnyWord   Boolean @default(false)
   dmMessage      String
+  dmMessages     String[] @default([])
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
@@ -183,13 +193,13 @@ model Automation {
   updatedAt DateTime @updatedAt
 
   workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  socialAccount    SocialAccount    @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
 
   @@index([workspaceId])
-  @@index([instagramAccountId])
+  @@index([socialAccountId])
   @@index([postId])
 }
 
@@ -197,7 +207,7 @@ model DmLog {
   id                 String     @id @default(cuid())
   workspaceId        String
   automationId       String
-  instagramAccountId String
+  socialAccountId    String
 
   commenterId   String
   commenterName String?
@@ -227,12 +237,12 @@ model DmLog {
 
   workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   automation       Automation       @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  socialAccount    SocialAccount    @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
   @@unique([automationId, commentId])
   @@index([workspaceId])
   @@index([automationId])
-  @@index([instagramAccountId])
+  @@index([socialAccountId])
   @@index([status])
   @@index([automationId, mediaId])
 }
@@ -244,13 +254,13 @@ model DmLog {
 // this records all comments so the reconciler doesn't re-sweep non-matching
 // ones every cycle.
 model ProcessedComment {
-  id                 String   @id @default(cuid())
-  instagramAccountId String
-  commentId          String   @unique
-  source             String // "WEBHOOK" | "POLLING"
-  seenAt             DateTime @default(now())
+  id              String   @id @default(cuid())
+  socialAccountId String
+  commentId       String   @unique
+  source          String // "WEBHOOK" | "POLLING"
+  seenAt          DateTime @default(now())
 
-  @@index([instagramAccountId])
+  @@index([socialAccountId])
 }
 
 model TrackedLink {
@@ -275,7 +285,7 @@ model LinkClick {
   id                 String   @id @default(cuid())
   workspaceId        String
   automationId       String
-  instagramAccountId String
+  socialAccountId    String
   trackedLinkId      String
   // Per-post attribution token carried on the short link (`?src=ig<mediaId>`),
   // validated against ^[a-z0-9-]{1,24}$ before it is stored or forwarded.
@@ -287,12 +297,12 @@ model LinkClick {
 
   workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   automation       Automation       @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  socialAccount    SocialAccount    @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
   trackedLink      TrackedLink      @relation(fields: [trackedLinkId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([automationId])
-  @@index([instagramAccountId])
+  @@index([socialAccountId])
   @@index([trackedLinkId])
   @@index([createdAt])
   @@index([workspaceId, createdAt])

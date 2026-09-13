@@ -60,8 +60,8 @@ export interface OverviewPost {
 }
 
 export interface OverviewResponse {
-  account: { id: string; username: string };
-  accounts: Array<{ id: string; username: string }>;
+  account: { id: string; username: string | null };
+  accounts: Array<{ id: string; username: string | null }>;
   requestedCount: "all" | number;
   truncated: boolean;
   insightsAvailable: boolean;
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
 
   const account = await getWorkspaceInstagramAccount(
     workspaceId,
-    request.nextUrl.searchParams.get("instagramAccountId")
+    request.nextUrl.searchParams.get("socialAccountId")
   );
 
   if (!account) {
@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const accounts = await prisma.instagramAccount.findMany({
+    const accounts = await prisma.socialAccount.findMany({
       where: { workspaceId },
       orderBy: { connectedAt: "desc" },
       select: { id: true, username: true },

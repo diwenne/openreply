@@ -17,6 +17,8 @@ import {
   sendDirectMessage,
   sendDirectMessageWithButton,
   sendDirectMessageWithLinkButton,
+  sendFacebookCommentReply,
+  sendFacebookPrivateReply,
   sendPrivateReply,
   sendPrivateReplyWithButton,
   sendPrivateReplyWithLinkButton,
@@ -50,7 +52,7 @@ function formatError(error: unknown): string {
 
 async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
   const {
-    instagramAccountId,
+    socialAccountId,
     commentId,
     commentText,
     commenterId,
@@ -67,12 +69,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       // Match campaigns bound to this specific post, plus any-post campaigns.
       OR: [{ postId: mediaId }, { matchAnyPost: true }],
       isActive: true,
-      instagramAccount: {
-        instagramId: instagramAccountId,
+      socialAccount: {
+        externalId: socialAccountId,
       },
     },
     include: {
-      instagramAccount: true,
+      socialAccount: true,
       workspace: true,
       trackedLinks: {
         select: {
@@ -120,7 +122,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       continue;
     }
 
-    if (!automation.instagramAccount.accessToken) {
+    if (!automation.socialAccount.accessToken) {
       await prisma.dmLog.upsert({
         where: {
           automationId_commentId: {
@@ -131,7 +133,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         create: {
           workspaceId: automation.workspaceId,
           automationId: automation.id,
-          instagramAccountId: automation.instagramAccountId,
+          socialAccountId: automation.socialAccountId,
           commenterId,
           commenterName,
           commentText,
@@ -151,7 +153,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
     let accessToken: string;
     try {
-      accessToken = decryptToken(automation.instagramAccount.accessToken);
+      accessToken = decryptToken(automation.socialAccount.accessToken);
     } catch {
       await prisma.dmLog.upsert({
         where: {
@@ -163,7 +165,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         create: {
           workspaceId: automation.workspaceId,
           automationId: automation.id,
-          instagramAccountId: automation.instagramAccountId,
+          socialAccountId: automation.socialAccountId,
           commenterId,
           commenterName,
           commentText,
@@ -189,7 +191,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         data: {
           workspaceId: automation.workspaceId,
           automationId: automation.id,
-          instagramAccountId: automation.instagramAccountId,
+          socialAccountId: automation.socialAccountId,
           commenterId,
           commenterName,
           commentText,
@@ -236,7 +238,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           trackedLinks: automation.trackedLinks,
           src: trackingSrc,
         });
-        await sendCommentReply(accessToken, commentId, publicReply);
+        if (automation.socialAccount.platform === "FACEBOOK") {
+          await sendFacebookCommentReply(accessToken, commentId, publicReply);
+        } else {
+          await sendCommentReply(accessToken, commentId, publicReply);
+        }
         await prisma.dmLog.update({
           where: {
             automationId_commentId: { automationId: automation.id, commentId },
@@ -283,7 +289,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
     let rateLimit;
     try {
-      rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
+      rateLimit = await reserveDMSlot(socialAccountId, requeueAttempt);
     } catch (error) {
       await releaseWorkspaceDMReservation(
         automation.workspaceId,
@@ -351,7 +357,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           },
           {
             delay: rateLimit.requeueDelayMs,
-            jobId: `comment_${instagramAccountId}_${commentId}_retry_${requeueAttempt + 1}`,
+            jobId: `comment_${socialAccountId}_${commentId}_retry_${requeueAttempt + 1}`,
           }
         );
         continue;
@@ -361,10 +367,26 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // With an opening DM, the private reply is a button message; tapping it
     // fires a postback that delivers the reveal (see processPostback). Without
     // one, we send the reveal text directly as today.
+    // Both the opening-DM button flow and the tracked-link BUTTON template are
+    // Instagram Send API features — Facebook Pages only got a plain Private
+    // Reply in this pass (Meta docs research covered POST /{page}/messages,
+    // not button templates), so a Facebook automation always takes the plain
+    // text path below, with any tracked link inlined into the text instead.
+    const isFacebook = automation.socialAccount.platform === "FACEBOOK";
     const useOpeningDm =
+      !isFacebook &&
       automation.openingDmEnabled &&
       Boolean(automation.openingDmMessage) &&
       Boolean(automation.openingDmButtonLabel);
+    // Rotate DM variants — same random-pick pattern as the public-reply pool
+    // above. Picked ONCE per send: the three branches below are alternate
+    // FORMATS of the same message (button/inline-link/plain), never different
+    // messages for the same comment.
+    const dmPool =
+      automation.dmMessages.length > 0
+        ? automation.dmMessages
+        : [automation.dmMessage];
+    const chosenDm = dmPool[Math.floor(Math.random() * dmPool.length)];
 
     try {
       if (useOpeningDm) {
@@ -375,17 +397,17 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         });
         await sendPrivateReplyWithButton(
           accessToken,
-          automation.instagramAccount.instagramId,
+          automation.socialAccount.externalId,
           commentId,
           openingText,
           automation.openingDmButtonLabel as string,
           `reveal:${automation.id}`
         );
-      } else if (automation.trackedLinks[0]) {
+      } else if (automation.trackedLinks[0] && !isFacebook) {
         // Try button template first; if Meta rejects it, fall back to inline link.
         const bodyText =
           renderMessageWithoutLink({
-            message: automation.dmMessage,
+            message: chosenDm,
             commenterName,
           }) || "Here's your link:";
         const trackedUrl = buildTrackedUrl(
@@ -397,7 +419,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         try {
           await sendPrivateReplyWithLinkButton(
             accessToken,
-            automation.instagramAccount.instagramId,
+            automation.socialAccount.externalId,
             commentId,
             bodyText,
             automation.linkButtonLabel || "Open link",
@@ -411,31 +433,40 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           );
           const fallbackMessage =
             renderMessageWithTracking({
-              message: automation.dmMessage,
+              message: chosenDm,
               commenterName,
               trackedLinks: [automation.trackedLinks[0]],
               src: trackingSrc,
             }) || `${bodyText}\n${trackedUrl}`;
           await sendPrivateReply(
             accessToken,
-            automation.instagramAccount.instagramId,
+            automation.socialAccount.externalId,
             commentId,
             fallbackMessage
           );
         }
       } else {
         const dmMessage = renderMessageWithTracking({
-          message: automation.dmMessage,
+          message: chosenDm,
           commenterName,
           trackedLinks: automation.trackedLinks,
           src: trackingSrc,
         });
-        await sendPrivateReply(
-          accessToken,
-          automation.instagramAccount.instagramId,
-          commentId,
-          dmMessage
-        );
+        if (isFacebook) {
+          await sendFacebookPrivateReply(
+            accessToken,
+            automation.socialAccount.externalId,
+            commentId,
+            dmMessage
+          );
+        } else {
+          await sendPrivateReply(
+            accessToken,
+            automation.socialAccount.externalId,
+            commentId,
+            dmMessage
+          );
+        }
       }
 
       await prisma.dmLog.update({
@@ -481,7 +512,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
  * IGSID (same id as their comment author id), which we DM directly.
  */
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
-  const { instagramAccountId, userId, payload } = job.data;
+  const { socialAccountId, userId, payload } = job.data;
 
   if (!payload.startsWith("reveal:")) return;
   const automationId = payload.slice("reveal:".length);
@@ -489,7 +520,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true },
     include: {
-      instagramAccount: true,
+      socialAccount: true,
       workspace: true,
       trackedLinks: {
         select: { slug: true, destinationUrl: true },
@@ -500,8 +531,8 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   if (
     !automation ||
-    automation.instagramAccount.instagramId !== instagramAccountId ||
-    !automation.instagramAccount.accessToken
+    automation.socialAccount.externalId !== socialAccountId ||
+    !automation.socialAccount.accessToken
   ) {
     return;
   }
@@ -537,7 +568,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   let accessToken: string;
   try {
-    accessToken = decryptToken(automation.instagramAccount.accessToken);
+    accessToken = decryptToken(automation.socialAccount.accessToken);
   } catch {
     return;
   }
@@ -551,7 +582,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       create: {
         workspaceId: automation.workspaceId,
         automationId: automation.id,
-        instagramAccountId: automation.instagramAccountId,
+        socialAccountId: automation.socialAccountId,
         commenterId: userId,
         commenterName,
         commentText: "(button tap)",
@@ -566,13 +597,21 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   }
 
   const primaryLink = automation.trackedLinks[0];
+  // Same rotation as processComment — one pick reused across the three
+  // alternate send formats below.
+  const dmPoolPostback =
+    automation.dmMessages.length > 0
+      ? automation.dmMessages
+      : [automation.dmMessage];
+  const chosenDmPostback =
+    dmPoolPostback[Math.floor(Math.random() * dmPoolPostback.length)];
 
   try {
     if (primaryLink) {
       // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =
         renderMessageWithoutLink({
-          message: automation.dmMessage,
+          message: chosenDmPostback,
           commenterName,
         }) || "Here's your link:";
       const trackedUrl = buildTrackedUrl(primaryLink.slug, undefined, trackingSrc);
@@ -580,7 +619,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       try {
         await sendDirectMessageWithLinkButton(
           accessToken,
-          automation.instagramAccount.instagramId,
+          automation.socialAccount.externalId,
           userId,
           bodyText,
           automation.linkButtonLabel || "Open link",
@@ -594,28 +633,28 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         );
         const fallbackMessage =
           renderMessageWithTracking({
-            message: automation.dmMessage,
+            message: chosenDmPostback,
             commenterName,
             trackedLinks: [primaryLink],
             src: trackingSrc,
           }) || `${bodyText}\n${trackedUrl}`;
         await sendDirectMessage(
           accessToken,
-          automation.instagramAccount.instagramId,
+          automation.socialAccount.externalId,
           userId,
           fallbackMessage
         );
       }
     } else {
       const revealMessage = renderMessageWithTracking({
-        message: automation.dmMessage,
+        message: chosenDmPostback,
         commenterName,
         trackedLinks: automation.trackedLinks,
         src: trackingSrc,
       });
       await sendDirectMessage(
         accessToken,
-        automation.instagramAccount.instagramId,
+        automation.socialAccount.externalId,
         userId,
         revealMessage
       );
@@ -627,7 +666,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       create: {
         workspaceId: automation.workspaceId,
         automationId: automation.id,
-        instagramAccountId: automation.instagramAccountId,
+        socialAccountId: automation.socialAccountId,
         commenterId: userId,
         commenterName,
         commentText: "(button tap)",
@@ -647,7 +686,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       create: {
         workspaceId: automation.workspaceId,
         automationId: automation.id,
-        instagramAccountId: automation.instagramAccountId,
+        socialAccountId: automation.socialAccountId,
         commenterId: userId,
         commenterName,
         commentText: "(button tap)",
@@ -672,7 +711,7 @@ async function processStoryReply(
   job: Job<ProcessStoryReplyJob>
 ): Promise<void> {
   const {
-    instagramAccountId,
+    socialAccountId,
     senderId,
     messageId,
     storyId,
@@ -684,7 +723,7 @@ async function processStoryReply(
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true, matchStoryReplies: true },
     include: {
-      instagramAccount: true,
+      socialAccount: true,
       workspace: true,
       trackedLinks: {
         select: { slug: true, destinationUrl: true },
@@ -695,8 +734,8 @@ async function processStoryReply(
 
   if (
     !automation ||
-    automation.instagramAccount.instagramId !== instagramAccountId ||
-    !automation.instagramAccount.accessToken
+    automation.socialAccount.externalId !== socialAccountId ||
+    !automation.socialAccount.accessToken
   ) {
     return;
   }
@@ -718,14 +757,14 @@ async function processStoryReply(
 
   let accessToken: string;
   try {
-    accessToken = decryptToken(automation.instagramAccount.accessToken);
+    accessToken = decryptToken(automation.socialAccount.accessToken);
   } catch {
     await prisma.dmLog.upsert({
       where: logKey,
       create: {
         workspaceId: automation.workspaceId,
         automationId: automation.id,
-        instagramAccountId: automation.instagramAccountId,
+        socialAccountId: automation.socialAccountId,
         commenterId: senderId,
         commentText: "(story reply)",
         commentId: messageId,
@@ -758,7 +797,7 @@ async function processStoryReply(
     create: {
       workspaceId: automation.workspaceId,
       automationId: automation.id,
-      instagramAccountId: automation.instagramAccountId,
+      socialAccountId: automation.socialAccountId,
       commenterId: senderId,
       commenterName,
       // The reply text is never stored; the matched keyword is the trigger.
@@ -792,7 +831,7 @@ async function processStoryReply(
 
   let rateLimit;
   try {
-    rateLimit = await reserveDMSlot(instagramAccountId, requeueAttempt);
+    rateLimit = await reserveDMSlot(socialAccountId, requeueAttempt);
   } catch (error) {
     await releaseWorkspaceDMReservation(
       automation.workspaceId,
@@ -843,7 +882,7 @@ async function processStoryReply(
         },
         {
           delay: rateLimit.requeueDelayMs,
-          jobId: `storyreply_${instagramAccountId}_${messageId.replace(
+          jobId: `storyreply_${socialAccountId}_${messageId.replace(
             /:/g,
             "_"
           )}_${automation.id}_retry_${requeueAttempt + 1}`,
@@ -861,6 +900,12 @@ async function processStoryReply(
     Boolean(automation.openingDmButtonLabel);
 
   const primaryLink = automation.trackedLinks[0];
+  // Same rotation as processComment/processPostback.
+  const dmPoolStory =
+    automation.dmMessages.length > 0
+      ? automation.dmMessages
+      : [automation.dmMessage];
+  const chosenDmStory = dmPoolStory[Math.floor(Math.random() * dmPoolStory.length)];
 
   try {
     if (useOpeningDm) {
@@ -871,7 +916,7 @@ async function processStoryReply(
       });
       await sendDirectMessageWithButton(
         accessToken,
-        automation.instagramAccount.instagramId,
+        automation.socialAccount.externalId,
         senderId,
         openingText,
         automation.openingDmButtonLabel as string,
@@ -881,7 +926,7 @@ async function processStoryReply(
       // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =
         renderMessageWithoutLink({
-          message: automation.dmMessage,
+          message: chosenDmStory,
           commenterName,
         }) || "Here's your link:";
       const trackedUrl = buildTrackedUrl(primaryLink.slug);
@@ -889,7 +934,7 @@ async function processStoryReply(
       try {
         await sendDirectMessageWithLinkButton(
           accessToken,
-          automation.instagramAccount.instagramId,
+          automation.socialAccount.externalId,
           senderId,
           bodyText,
           automation.linkButtonLabel || "Open link",
@@ -903,26 +948,26 @@ async function processStoryReply(
         );
         const fallbackMessage =
           renderMessageWithTracking({
-            message: automation.dmMessage,
+            message: chosenDmStory,
             commenterName,
             trackedLinks: [primaryLink],
           }) || `${bodyText}\n${trackedUrl}`;
         await sendDirectMessage(
           accessToken,
-          automation.instagramAccount.instagramId,
+          automation.socialAccount.externalId,
           senderId,
           fallbackMessage
         );
       }
     } else {
       const dmMessage = renderMessageWithTracking({
-        message: automation.dmMessage,
+        message: chosenDmStory,
         commenterName,
         trackedLinks: automation.trackedLinks,
       });
       await sendDirectMessage(
         accessToken,
-        automation.instagramAccount.instagramId,
+        automation.socialAccount.externalId,
         senderId,
         dmMessage
       );
@@ -969,16 +1014,16 @@ async function recordWorkerFailure(
   error: Error
 ) {
   try {
-    const instagramAccountId = job?.data.instagramAccountId;
+    const socialAccountId = job?.data.socialAccountId;
     const commentId =
       job && "commentId" in job.data
         ? job.data.commentId
         : job && "messageId" in job.data
           ? job.data.messageId
           : null;
-    const account = instagramAccountId
-      ? await prisma.instagramAccount.findUnique({
-          where: { instagramId: instagramAccountId },
+    const account = socialAccountId
+      ? await prisma.socialAccount.findUnique({
+          where: { externalId: socialAccountId },
           select: { workspaceId: true },
         })
       : null;
@@ -992,7 +1037,7 @@ async function recordWorkerFailure(
         payload: {
           jobId: job?.id ?? null,
           attemptsMade: job?.attemptsMade ?? null,
-          instagramAccountId: instagramAccountId ?? null,
+          socialAccountId: socialAccountId ?? null,
           commentId,
         },
       },
@@ -1002,7 +1047,7 @@ async function recordWorkerFailure(
       level: "error",
       message: error.message,
       jobId: job?.id,
-      instagramAccountId,
+      socialAccountId,
       commentId: commentId ?? undefined,
     });
   } catch (recordError) {

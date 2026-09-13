@@ -19,7 +19,7 @@ const createAutomationSchema = z
   .object({
     name: z.string().min(1).max(100),
     goal: z.string().min(1).max(120).optional().nullable(),
-    instagramAccountId: z.string().min(1).optional().nullable(),
+    socialAccountId: z.string().min(1).optional().nullable(),
     postId: z.string().min(1).optional().nullable(),
     postUrl: z.string().url().optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
@@ -28,6 +28,7 @@ const createAutomationSchema = z
     keywords: z.array(z.string().min(1).max(50)).max(200).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
     dmMessage: z.string().min(1).max(1000),
+    dmMessages: z.array(z.string().max(1000)).max(10).optional().default([]),
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -82,6 +83,7 @@ const updateAutomationSchema = z.object({
   keywords: z.array(z.string().min(1).max(50)).max(200).optional(),
   matchAnyWord: z.boolean().optional(),
   dmMessage: z.string().min(1).max(1000).optional(),
+  dmMessages: z.array(z.string().max(1000)).max(10).optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -108,18 +110,18 @@ export async function GET(request: NextRequest) {
       { status: 401 }
     );
   }
-  const instagramAccountId =
-    request.nextUrl.searchParams.get("instagramAccountId");
+  const socialAccountId =
+    request.nextUrl.searchParams.get("socialAccountId");
   const accountFilter =
-    instagramAccountId && instagramAccountId !== "all"
-      ? { instagramAccountId }
+    socialAccountId && socialAccountId !== "all"
+      ? { socialAccountId }
       : {};
 
   const automations = await prisma.automation.findMany({
     where: { workspaceId, ...accountFilter },
     include: {
-      instagramAccount: {
-        select: { username: true, instagramId: true },
+      socialAccount: {
+        select: { username: true, externalId: true, platform: true },
       },
       _count: {
         select: { dmLogs: true },
@@ -287,20 +289,20 @@ export async function POST(request: NextRequest) {
   }
 
   const requestedInstagramAccountId =
-    parsed.data.instagramAccountId && parsed.data.instagramAccountId !== "all"
-      ? parsed.data.instagramAccountId
+    parsed.data.socialAccountId && parsed.data.socialAccountId !== "all"
+      ? parsed.data.socialAccountId
       : null;
 
-  const [workspace, instagramAccount] = await Promise.all([
+  const [workspace, socialAccount] = await Promise.all([
     prisma.workspace.findUnique({
       where: { id: workspaceId },
       select: { id: true },
     }),
     requestedInstagramAccountId
-      ? prisma.instagramAccount.findFirst({
+      ? prisma.socialAccount.findFirst({
           where: { id: requestedInstagramAccountId, workspaceId },
         })
-      : prisma.instagramAccount.findFirst({
+      : prisma.socialAccount.findFirst({
           where: { workspaceId },
           orderBy: { connectedAt: "desc" },
         }),
@@ -313,9 +315,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!instagramAccount) {
+  if (!socialAccount) {
     return NextResponse.json(
-      { success: false, error: "Connect Instagram before creating campaigns" },
+      { success: false, error: "Connect an account before creating campaigns" },
       { status: 400 }
     );
   }
@@ -344,6 +346,9 @@ export async function POST(request: NextRequest) {
   )
     .map((m) => m.trim())
     .filter(Boolean);
+  // Extra DM variants, rotated at send time (lib/queue/dm-worker.ts). `dmMessage`
+  // stays the required primary message — these are additions, not a replacement.
+  const dmList = parsed.data.dmMessages.map((m) => m.trim()).filter(Boolean);
 
   const automation = await prisma.automation.create({
     data: {
@@ -358,6 +363,7 @@ export async function POST(request: NextRequest) {
       keywords: matchAnyWord ? [] : parsed.data.keywords,
       matchAnyWord,
       dmMessage: parsed.data.dmMessage,
+      dmMessages: dmList,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled
         ? parsed.data.openingDmMessage || null
@@ -374,7 +380,7 @@ export async function POST(request: NextRequest) {
       isActive: parsed.data.isActive,
       wholeWordMatch: parsed.data.wholeWordMatch,
       workspaceId,
-      instagramAccountId: instagramAccount.id,
+      socialAccountId: socialAccount.id,
       reportShareSlug: generateReportShareSlug(),
       ...(trackedDestinationUrl
         ? {
@@ -486,6 +492,13 @@ export async function PATCH(request: NextRequest) {
   if (automationData.publicReplyEnabled === false) {
     automationData.publicReplyMessages = [];
     automationData.publicReplyMessage = null;
+  }
+  // Extra DM variants — trimmed/filtered same as public-reply ones. `dmMessage`
+  // itself is untouched here (it's required, never cleared from a variants edit).
+  if (automationData.dmMessages !== undefined) {
+    automationData.dmMessages = automationData.dmMessages
+      .map((m) => m.trim())
+      .filter(Boolean);
   }
 
   const updated = await prisma.automation.update({

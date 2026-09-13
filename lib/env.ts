@@ -38,6 +38,11 @@ export const serverEnvSchema = z.object({
   ENCRYPTION_KEY: z.string().regex(HEX_32_BYTE),
   INSTAGRAM_APP_ID: z.string().min(1),
   INSTAGRAM_APP_SECRET: z.string().min(1),
+  // Facebook Login for Business is a separate OAuth surface from
+  // Instagram-Login even on the same Meta app — Meta issues it its own App ID
+  // (often the same numeric id as INSTAGRAM_APP_ID, but not guaranteed; set
+  // explicitly rather than assumed).
+  FACEBOOK_APP_ID: z.string().min(1),
   FACEBOOK_APP_SECRET: z.string().min(1),
   WEBHOOK_VERIFY_TOKEN: z.string().min(1),
 });

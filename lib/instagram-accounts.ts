@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db/client";
 
+// Instagram-specific helpers, kept under this name since every caller is an
+// Instagram-only route (posts, profile, conversations, the IG OAuth callback).
+// Both query the shared SocialAccount table, scoped to platform: "INSTAGRAM" —
+// see lib/facebook-accounts.ts for the Facebook Page equivalents.
+
 export async function canConnectInstagramAccount({
   workspaceId,
   instagramId,
@@ -7,9 +12,9 @@ export async function canConnectInstagramAccount({
   workspaceId: string;
   instagramId: string;
 }) {
-  const existingAccount = await prisma.instagramAccount.findUnique({
-    where: { instagramId },
-    select: { workspaceId: true },
+  const existingAccount = await prisma.socialAccount.findUnique({
+    where: { externalId: instagramId },
+    select: { workspaceId: true, platform: true },
   });
 
   if (existingAccount && existingAccount.workspaceId !== workspaceId) {
@@ -27,16 +32,16 @@ export async function canConnectInstagramAccount({
 
 export async function getWorkspaceInstagramAccount(
   workspaceId: string,
-  instagramAccountId?: string | null
+  socialAccountId?: string | null
 ) {
-  if (instagramAccountId && instagramAccountId !== "all") {
-    return prisma.instagramAccount.findFirst({
-      where: { id: instagramAccountId, workspaceId },
+  if (socialAccountId && socialAccountId !== "all") {
+    return prisma.socialAccount.findFirst({
+      where: { id: socialAccountId, workspaceId, platform: "INSTAGRAM" },
     });
   }
 
-  return prisma.instagramAccount.findFirst({
-    where: { workspaceId },
+  return prisma.socialAccount.findFirst({
+    where: { workspaceId, platform: "INSTAGRAM" },
     orderBy: { connectedAt: "desc" },
   });
 }

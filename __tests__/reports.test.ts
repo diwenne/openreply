@@ -37,7 +37,7 @@ const baseAutomation = {
   workspace: {
     name: "Acme Studio",
   },
-  instagramAccount: {
+  socialAccount: {
     username: "acme",
   },
   trackedLinks: [

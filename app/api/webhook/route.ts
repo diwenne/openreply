@@ -93,15 +93,15 @@ export async function POST(request: NextRequest) {
     const queue = getDMQueue();
 
     for (const event of commentEvents) {
-      const account = await prisma.instagramAccount.findUnique({
-        where: { instagramId: event.instagramAccountId },
+      const account = await prisma.socialAccount.findUnique({
+        where: { externalId: event.socialAccountId },
         select: { workspaceId: true },
       });
 
       await queue.add(
         "process-comment",
         {
-          instagramAccountId: event.instagramAccountId,
+          socialAccountId: event.socialAccountId,
           commentId: event.commentId,
           commentText: event.commentText,
           commenterId: event.commenterId,
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
           source: "WEBHOOK",
         },
         {
-          jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
+          jobId: `comment_${event.socialAccountId}_${event.commentId}`,
         }
       );
 
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       await queue.add(
         POSTBACK_JOB_NAME,
         {
-          instagramAccountId: event.instagramAccountId,
+          socialAccountId: event.socialAccountId,
           userId: event.userId,
           payload: event.payload,
           mid: event.mid,
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         {
           // BullMQ forbids ":" in custom job ids, and the payload is
           // "reveal:<id>", so build with underscores and strip any colons.
-          jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
+          jobId: `postback_${event.socialAccountId}_${event.userId}_${(
             event.mid ?? event.payload
           ).replace(/:/g, "_")}`,
         }
@@ -149,8 +149,8 @@ export async function POST(request: NextRequest) {
     const storyReplyEvents = parseStoryReplyEvents(typedPayload);
 
     for (const event of storyReplyEvents) {
-      const account = await prisma.instagramAccount.findUnique({
-        where: { instagramId: event.instagramAccountId },
+      const account = await prisma.socialAccount.findUnique({
+        where: { externalId: event.socialAccountId },
         select: { id: true, workspaceId: true },
       });
       if (!account) continue;
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
         where: {
           matchStoryReplies: true,
           isActive: true,
-          instagramAccountId: account.id,
+          socialAccountId: account.id,
         },
         select: {
           id: true,
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         await queue.add(
           STORY_REPLY_JOB_NAME,
           {
-            instagramAccountId: event.instagramAccountId,
+            socialAccountId: event.socialAccountId,
             senderId: event.senderId,
             messageId: event.messageId,
             storyId: event.storyId,
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
           },
           {
             // Message ids can contain ":" which BullMQ forbids in job ids.
-            jobId: `storyreply_${event.instagramAccountId}_${event.messageId.replace(
+            jobId: `storyreply_${event.socialAccountId}_${event.messageId.replace(
               /:/g,
               "_"
             )}_${automation.id}`,
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
             object: "instagram",
             payload: {
               kind: "story_reply_match",
-              instagramAccountId: event.instagramAccountId,
+              socialAccountId: event.socialAccountId,
               senderId: event.senderId,
               messageId: event.messageId,
               storyId: event.storyId ?? null,

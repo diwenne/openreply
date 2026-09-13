@@ -96,18 +96,18 @@ function blockedResult(
  * Check if an Instagram account is within its DM rate limit.
  *
  * Uses a Redis counter with a 1-hour TTL per account.
- * Key pattern: `rate:dm:{instagramAccountId}`
+ * Key pattern: `rate:dm:{socialAccountId}`
  *
- * @param instagramAccountId - The Instagram account ID to check
+ * @param socialAccountId - The Instagram account ID to check
  * @param requeueAttempt - How many times this job has been requeued (0 = first attempt)
  * @returns Rate limit result with action recommendations
  */
 export async function checkRateLimit(
-  instagramAccountId: string,
+  socialAccountId: string,
   requeueAttempt: number = 0
 ): Promise<RateLimitResult> {
   const client = getRedis();
-  const key = `rate:dm:${instagramAccountId}`;
+  const key = `rate:dm:${socialAccountId}`;
 
   const currentCount = await client.get(key);
   const count = currentCount ? parseInt(currentCount, 10) : 0;
@@ -155,11 +155,11 @@ export async function checkRateLimit(
  * the rate-limit check before any of them increments the Redis counter.
  */
 export async function reserveDMSlot(
-  instagramAccountId: string,
+  socialAccountId: string,
   requeueAttempt: number = 0
 ): Promise<RateLimitResult> {
   const client = getRedis();
-  const key = `rate:dm:${instagramAccountId}`;
+  const key = `rate:dm:${socialAccountId}`;
 
   const result = await client.eval(
     RESERVE_DM_SLOT_SCRIPT,
@@ -193,9 +193,9 @@ export async function reserveDMSlot(
  * Prefer reserveDMSlot in workers.
  */
 export async function incrementDMCounter(
-  instagramAccountId: string
+  socialAccountId: string
 ): Promise<number> {
-  const result = await reserveDMSlot(instagramAccountId, MAX_REQUEUE_ATTEMPTS);
+  const result = await reserveDMSlot(socialAccountId, MAX_REQUEUE_ATTEMPTS);
   return result.currentCount;
 }
 
@@ -203,10 +203,10 @@ export async function incrementDMCounter(
  * Get the current DM count for an Instagram account.
  */
 export async function getCurrentDMCount(
-  instagramAccountId: string
+  socialAccountId: string
 ): Promise<number> {
   const client = getRedis();
-  const key = `rate:dm:${instagramAccountId}`;
+  const key = `rate:dm:${socialAccountId}`;
   const count = await client.get(key);
   return count ? parseInt(count, 10) : 0;
 }
@@ -215,10 +215,10 @@ export async function getCurrentDMCount(
  * Reset the rate limiter for an account (useful for testing).
  */
 export async function resetRateLimit(
-  instagramAccountId: string
+  socialAccountId: string
 ): Promise<void> {
   const client = getRedis();
-  const key = `rate:dm:${instagramAccountId}`;
+  const key = `rate:dm:${socialAccountId}`;
   await client.del(key);
 }
 

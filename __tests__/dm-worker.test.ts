@@ -4,6 +4,9 @@ const {
   mockPrisma,
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
+  mockSendPrivateReplyWithButton,
+  mockSendFacebookPrivateReply,
+  mockSendFacebookCommentReply,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -22,7 +25,7 @@ const {
       upsert: vi.fn(),
       update: vi.fn(),
     },
-    instagramAccount: {
+    socialAccount: {
       findUnique: vi.fn(),
     },
     operationalEvent: {
@@ -31,6 +34,9 @@ const {
   },
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
+  mockSendPrivateReplyWithButton: vi.fn(),
+  mockSendFacebookPrivateReply: vi.fn(),
+  mockSendFacebookCommentReply: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -46,11 +52,13 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@/lib/meta/client", () => ({
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
-  sendPrivateReplyWithButton: vi.fn(),
+  sendPrivateReplyWithButton: mockSendPrivateReplyWithButton,
   sendDirectMessage: vi.fn(),
   getMessagingUserProfile: vi.fn().mockResolvedValue({ username: "story_user" }),
   sendDirectMessageWithLinkButton: vi.fn(),
   sendCommentReply: vi.fn(),
+  sendFacebookPrivateReply: mockSendFacebookPrivateReply,
+  sendFacebookCommentReply: mockSendFacebookCommentReply,
   MetaApiError: class MetaApiError extends Error {
     code: number;
     constructor(
@@ -116,10 +124,11 @@ const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
 const mockAutomation = {
   id: "auto_789",
   workspaceId: "workspace_123",
-  instagramAccountId: "ig_account_row_1",
+  socialAccountId: "ig_account_row_1",
   postId: "media_101",
   keywords: ["LINK", "PRICE"],
   dmMessage: "Hey {username}! Here is the link: https://example.com",
+  dmMessages: [],
   isActive: true,
   wholeWordMatch: true,
   matchAnyPost: false,
@@ -131,9 +140,9 @@ const mockAutomation = {
   publicReplyEnabled: false,
   publicReplyMessage: null,
   publicReplyMessages: [],
-  instagramAccount: {
+  socialAccount: {
     id: "ig_account_row_1",
-    instagramId: "ig_456",
+    externalId: "ig_456",
     accessToken: "encrypted_token_abc",
   },
   workspace: {
@@ -143,7 +152,7 @@ const mockAutomation = {
 };
 
 const mockJobData = {
-  instagramAccountId: "ig_456",
+  socialAccountId: "ig_456",
   commentId: "comment_555",
   commentText: "I want the LINK!",
   commenterId: "commenter_999",
@@ -180,7 +189,7 @@ beforeEach(() => {
   mockPrisma.dmLog.findFirst.mockResolvedValue(null);
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockResolvedValue({});
-  mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+  mockPrisma.socialAccount.findUnique.mockResolvedValue({
     workspaceId: "workspace_123",
   });
   mockPrisma.operationalEvent.create.mockResolvedValue({});
@@ -211,6 +220,10 @@ beforeEach(() => {
     recipient_id: "commenter_999",
     message_id: "msg_002",
   });
+  mockSendFacebookPrivateReply.mockResolvedValue({
+    recipient_id: "commenter_999",
+    message_id: "fb_msg_001",
+  });
 });
 
 describe("DM Worker — Full Pipeline", () => {
@@ -223,10 +236,10 @@ describe("DM Worker — Full Pipeline", () => {
       where: {
         OR: [{ postId: "media_101" }, { matchAnyPost: true }],
         isActive: true,
-        instagramAccount: { instagramId: "ig_456" },
+        socialAccount: { externalId: "ig_456" },
       },
       include: {
-        instagramAccount: true,
+        socialAccount: true,
         workspace: true,
         trackedLinks: {
           select: {
@@ -405,8 +418,8 @@ describe("DM Worker — Full Pipeline", () => {
     mockPrisma.automation.findMany.mockResolvedValue([
       {
         ...mockAutomation,
-        instagramAccount: {
-          ...mockAutomation.instagramAccount,
+        socialAccount: {
+          ...mockAutomation.socialAccount,
           accessToken: null,
         },
       },
@@ -430,7 +443,7 @@ describe("DM Worker — Full Pipeline", () => {
   it("should use 'there' when commenter name is not available", async () => {
     const processor = getProcessor();
     const jobDataWithoutName = {
-      instagramAccountId: mockJobData.instagramAccountId,
+      socialAccountId: mockJobData.socialAccountId,
       commentId: mockJobData.commentId,
       commentText: mockJobData.commentText,
       commenterId: mockJobData.commenterId,
@@ -445,6 +458,63 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Hey there! Here is the link: https://example.com"
     );
+  });
+
+  it("rotates among dmMessages when set, ignoring the primary dmMessage", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        dmMessage: "should never be sent once variants exist",
+        dmMessages: ["Variant A {username}", "Variant B {username}"],
+      },
+    ]);
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    const sent = mockSendPrivateReply.mock.calls[0][3];
+    expect(["Variant A commenter_user", "Variant B commenter_user"]).toContain(
+      sent
+    );
+  });
+
+  it("sends via the Facebook Page API, not the Instagram one, for a Facebook automation", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        socialAccount: { ...mockAutomation.socialAccount, platform: "FACEBOOK" },
+      },
+    ]);
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendFacebookPrivateReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      "Hey commenter_user! Here is the link: https://example.com"
+    );
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+
+  it("ignores the opening-DM button flow for a Facebook automation and sends plain text instead", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        socialAccount: { ...mockAutomation.socialAccount, platform: "FACEBOOK" },
+        openingDmEnabled: true,
+        openingDmMessage: "Hey there!",
+        openingDmButtonLabel: "Send me the link",
+      },
+    ]);
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendFacebookPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReplyWithButton).not.toHaveBeenCalled();
   });
 
   it("should deliver tracked links as a web_url button", async () => {

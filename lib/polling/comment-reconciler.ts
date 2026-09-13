@@ -62,8 +62,11 @@ function errMessage(error: unknown): string {
 
 /** One reconciliation pass across every active campaign. */
 export async function reconcileComments(): Promise<void> {
+  // Instagram only — this sweep calls Instagram-only Graph endpoints
+  // (getRecentMediaComments/getUserMedia). Facebook Page comments rely on the
+  // `feed` webhook only; no polling fallback for it yet.
   const automations = await prisma.automation.findMany({
-    where: { isActive: true },
+    where: { isActive: true, socialAccount: { platform: "INSTAGRAM" } },
     select: {
       id: true,
       name: true,
@@ -74,10 +77,10 @@ export async function reconcileComments(): Promise<void> {
       wholeWordMatch: true,
       publicReplyEnabled: true,
       workspaceId: true,
-      instagramAccount: {
+      socialAccount: {
         select: {
           id: true,
-          instagramId: true,
+          externalId: true,
           username: true,
           accessToken: true,
         },
@@ -113,17 +116,17 @@ async function sweepCampaign(
     keywords: string[];
     wholeWordMatch: boolean;
     publicReplyEnabled: boolean;
-    instagramAccount: {
+    socialAccount: {
       id: string;
-      instagramId: string;
-      username: string;
+      externalId: string;
+      username: string | null;
       accessToken: string;
     };
   },
   sinceMs: number,
   tokenCache: Map<string, string | null>
 ): Promise<SweepStat> {
-  const account = automation.instagramAccount;
+  const account = automation.socialAccount;
   const stat: SweepStat = {
     campaign: automation.name,
     keywords: automation.matchAnyWord
@@ -180,7 +183,7 @@ async function sweepCampaign(
     // keyword, and (c) have no reply from the account owner yet.
     const needsAction = comments.filter((c) => {
       const authorId = c.from?.id;
-      if (!authorId || authorId === account.instagramId) return false;
+      if (!authorId || authorId === account.externalId) return false;
 
       const matched = automation.matchAnyWord
         ? true
@@ -190,7 +193,7 @@ async function sweepCampaign(
       stat.matched += 1;
 
       const ownerReplied = (c.replies?.data ?? []).some(
-        (r) => r.from?.id === account.instagramId
+        (r) => r.from?.id === account.externalId
       );
       if (ownerReplied) {
         stat.alreadyReplied += 1;
@@ -231,7 +234,7 @@ async function sweepCampaign(
       // above (owner-reply + DmLog guards) and the worker is idempotent
       // (publicReplySentAt / SENT), so re-processing a comment is safe.
       await queue.add("process-comment", {
-        instagramAccountId: account.instagramId,
+        socialAccountId: account.externalId,
         commentId: c.id,
         commentText: c.text ?? "",
         commenterId: c.from!.id,

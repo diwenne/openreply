@@ -21,7 +21,7 @@ export interface ConversationListItem {
 
 export interface ConversationsResponse {
   conversations: ConversationListItem[];
-  account: { id: string; username: string; instagramId: string };
+  account: { id: string; username: string | null; instagramId: string };
 }
 
 // List the account's DM conversations for the inbox.
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   const account = await getWorkspaceInstagramAccount(
     workspaceId,
-    request.nextUrl.searchParams.get("instagramAccountId")
+    request.nextUrl.searchParams.get("socialAccountId")
   );
   if (!account) {
     return NextResponse.json(
@@ -47,12 +47,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const accessToken = decryptToken(account.accessToken);
-    const raw = await getConversations(accessToken, account.instagramId);
+    const raw = await getConversations(accessToken, account.externalId);
 
     const conversations: ConversationListItem[] = raw.map((c) => {
       const participants = c.participants?.data ?? [];
       const contact =
-        participants.find((p) => p.id !== account.instagramId) ??
+        participants.find((p) => p.id !== account.externalId) ??
         participants[0] ??
         null;
       const last = c.messages?.data?.[0] ?? null;
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         lastMessage: last
           ? {
               text: last.message ?? "",
-              fromMe: last.from?.id === account.instagramId,
+              fromMe: last.from?.id === account.externalId,
               createdTime: last.created_time ?? null,
             }
           : null,
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       account: {
         id: account.id,
         username: account.username,
-        instagramId: account.instagramId,
+        instagramId: account.externalId,
       },
     };
     return NextResponse.json({ success: true, data });
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { instagramAccountId?: string; recipientId?: string; text?: string };
+  let body: { socialAccountId?: string; recipientId?: string; text?: string };
   try {
     body = await request.json();
   } catch {
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
 
   const account = await getWorkspaceInstagramAccount(
     workspaceId,
-    body.instagramAccountId ?? null
+    body.socialAccountId ?? null
   );
   if (!account) {
     return NextResponse.json(
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     const accessToken = decryptToken(account.accessToken);
     const result = await sendDirectMessage(
       accessToken,
-      account.instagramId,
+      account.externalId,
       body.recipientId,
       text
     );

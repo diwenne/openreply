@@ -2,9 +2,11 @@
 
 export interface AccountOption {
   id: string;
-  username: string;
+  // Instagram accounts always have one; Facebook Pages don't.
+  username: string | null;
   instagramId: string;
   name?: string | null;
+  platform?: "INSTAGRAM" | "FACEBOOK";
 }
 
 interface AccountSelectProps {
@@ -35,7 +37,9 @@ export default function AccountSelect({
         {includeAll && <option value="all">All accounts</option>}
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
-            @{account.username}
+            {account.username
+              ? `@${account.username}`
+              : (account.name ?? "Facebook Page")}
           </option>
         ))}
       </select>
