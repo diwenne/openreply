@@ -6,10 +6,10 @@ import os from "node:os";
 const worker = createDMWorker();
 const startedAt = new Date().toISOString();
 const HEARTBEAT_INTERVAL_MS = 30_000;
-// Polling safety net for comments that webhooks miss. Runs in the worker because
-// it must fire every few minutes and Vercel's free crons only run once a day.
+// Polling safety net for comments that webhooks miss. Keep this longer than
+// Neon's five-minute autosuspend delay so an idle database can scale to zero.
 const POLL_INTERVAL_MS = Number(
-  process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
+  process.env.COMMENT_POLL_INTERVAL_MS ?? 15 * 60_000
 );
 
 console.log("[DM Worker] Started");
