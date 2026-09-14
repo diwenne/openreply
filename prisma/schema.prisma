@@ -232,6 +232,14 @@ model DmLog {
   publicReplySentAt DateTime?
   publicReplyError  String?
 
+  // Set only when the opening DM (button, "awaiting confirmation") was sent —
+  // dmSentAt/status=SENT above fire for BOTH the opening DM and the reveal, so
+  // this is the only way to tell "waiting on a tap" from "already confirmed"
+  // (Plume 14/09 : rappel aux gens qui n'ont pas cliqué). reminderSentAt marks
+  // the one-shot reminder as sent (or attempted), never retried past that.
+  openingDmSentAt DateTime?
+  reminderSentAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -242,6 +250,7 @@ model DmLog {
   @@unique([automationId, commentId])
   @@index([workspaceId])
   @@index([automationId])
+  @@index([openingDmSentAt])
   @@index([socialAccountId])
   @@index([status])
   @@index([automationId, mediaId])

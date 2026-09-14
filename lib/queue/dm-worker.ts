@@ -480,6 +480,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           status: "SENT",
           dmSentAt: new Date(),
           errorMessage: null,
+          // dmSentAt alone can't tell "opening DM, awaiting a tap" from
+          // "already confirmed" — both branches set it. This is the one field
+          // that's only ever set on the opening-DM path (see the reminder
+          // sweep, lib/reminders/opening-dm-reminder.ts).
+          ...(useOpeningDm ? { openingDmSentAt: new Date() } : {}),
         },
       });
     } catch (error) {
@@ -979,6 +984,7 @@ async function processStoryReply(
         status: "SENT",
         dmSentAt: new Date(),
         errorMessage: null,
+        ...(useOpeningDm ? { openingDmSentAt: new Date() } : {}),
       },
     });
   } catch (error) {
