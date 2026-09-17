@@ -278,6 +278,11 @@ model TrackedLink {
   slug           String   @unique
   label          String?
   destinationUrl String
+  // Which DM button this link is, starting at 0. Read links with
+  // TRACKED_LINK_ORDER (lib/tracking/link-order.ts), never by createdAt alone:
+  // links saved in one request share a createdAt, and Postgres returns tied
+  // rows in no fixed order.
+  position       Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

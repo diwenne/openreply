@@ -43,6 +43,7 @@ import {
   renderMessageWithTracking,
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
+import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 
 import {
   ZernioApiError,
@@ -254,7 +255,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           label: true,
           destinationUrl: true,
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: TRACKED_LINK_ORDER,
       },
     },
     orderBy: { createdAt: "asc" },
@@ -808,7 +809,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       workspace: true,
       trackedLinks: {
         select: { slug: true, label: true, destinationUrl: true },
-        orderBy: { createdAt: "asc" },
+        orderBy: TRACKED_LINK_ORDER,
       },
     },
   });
@@ -1125,7 +1126,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       workspace: true,
       trackedLinks: {
         select: { slug: true, label: true, destinationUrl: true },
-        orderBy: { createdAt: "asc" },
+        orderBy: TRACKED_LINK_ORDER,
       },
     },
     orderBy: { createdAt: "asc" },

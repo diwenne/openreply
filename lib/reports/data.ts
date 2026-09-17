@@ -4,6 +4,7 @@ import {
   normalizeTopKeywords,
   summarizeDmStatuses,
 } from "@/lib/tracking/analytics";
+import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { buildReportUrl, isReportBranded } from "@/lib/reports/share";
 
 function getHostname(url: string) {
@@ -59,7 +60,7 @@ export async function getCampaignReportBySlug(shareSlug: string) {
           destinationUrl: true,
           _count: { select: { clicks: true } },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: TRACKED_LINK_ORDER,
       },
     },
   });

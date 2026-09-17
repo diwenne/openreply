@@ -337,7 +337,9 @@ describe("DM Worker — Full Pipeline", () => {
             label: true,
             destinationUrl: true,
           },
-          orderBy: { createdAt: "asc" },
+          // Button order: position first, with createdAt and id only as
+          // tie breakers, so tied rows can never come back swapped.
+          orderBy: [{ position: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         },
       },
       orderBy: { createdAt: "asc" },

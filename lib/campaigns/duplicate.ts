@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { generateReportShareSlug } from "@/lib/reports/share";
+import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
 
 // Matches the campaign name limit the create and update schemas enforce.
@@ -42,7 +43,7 @@ export async function duplicateCampaign({
 }) {
   const source = await prisma.automation.findFirst({
     where: { id: automationId, workspaceId },
-    include: { trackedLinks: { orderBy: { createdAt: "asc" } } },
+    include: { trackedLinks: { orderBy: TRACKED_LINK_ORDER } },
   });
 
   if (!source) return null;
@@ -65,11 +66,14 @@ export async function duplicateCampaign({
       isActive: false,
       reportShareSlug: generateReportShareSlug(),
       trackedLinks: {
-        create: trackedLinks.map((link) => ({
+        // Numbered from the order just read, so the copy's buttons match
+        // the original's even if the original's positions have gaps or ties.
+        create: trackedLinks.map((link, position) => ({
           workspaceId: source.workspaceId,
           slug: generateTrackedLinkSlug(),
           label: link.label,
           destinationUrl: link.destinationUrl,
+          position,
         })),
       },
     },
