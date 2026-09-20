@@ -12,6 +12,8 @@
  * already running then.
  */
 
+import type { Locale } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/provider";
 import { useState } from "react";
 import {
   CartesianGrid,
@@ -35,22 +37,22 @@ const SERIES_COLOR = "#f97316";
 const GRID_COLOR = "#e4e4e7";
 const AXIS_TEXT = "#71717a";
 
-function formatCompact(n: number): string {
+function formatCompact(n: number, locale: Locale): string {
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
+  return n.toLocaleString(locale);
 }
 
-function formatDay(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+function formatDay(iso: string, locale: Locale): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
     timeZone: "UTC",
   });
 }
 
-function formatSigned(n: number): string {
-  return `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
+function formatSigned(n: number, locale: Locale): string {
+  return `${n > 0 ? "+" : ""}${n.toLocaleString(locale)}`;
 }
 
 function ChartTooltip({
@@ -60,18 +62,19 @@ function ChartTooltip({
   active?: boolean;
   payload?: Array<{ payload: FollowerChartPoint }>;
 }) {
+  const { t, locale } = useI18n();
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
 
   return (
     <div className="rounded border border-border bg-surface px-3 py-2 text-xs shadow-lg">
-      <p className="text-muted">{formatDay(point.date)}</p>
+      <p className="text-muted">{formatDay(point.date, locale)}</p>
       <p className="mt-1 font-semibold text-foreground">
-        {point.followers.toLocaleString()} followers
+        {point.followers.toLocaleString(locale)} {t("followers")}
       </p>
       {point.delta !== null && point.delta !== 0 && (
         <p className={point.delta > 0 ? "text-success" : "text-error"}>
-          {formatSigned(point.delta)} that day
+          {formatSigned(point.delta, locale)} {t("that day")}
         </p>
       )}
     </div>
@@ -85,6 +88,7 @@ export default function FollowerChart({
   data: FollowerChartPoint[];
   followers: number | null;
 }) {
+  const { t, locale } = useI18n();
   const [showTable, setShowTable] = useState(false);
 
   const current = followers ?? data.at(-1)?.followers ?? null;
@@ -99,19 +103,19 @@ export default function FollowerChart({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">
-            Followers over time
+            {t("Followers over time")}
           </h2>
           <p className="mt-1 text-sm text-muted">
             {current === null
-              ? "Follower count unavailable"
-              : `${current.toLocaleString()} now`}
+              ? t("Follower count unavailable")
+              : t("{count} now", { count: current.toLocaleString(locale) })}
             {net !== null && (
               <>
                 {" · "}
                 <span className={net >= 0 ? "text-success" : "text-error"}>
-                  {formatSigned(net)}
+                  {formatSigned(net, locale)}
                 </span>{" "}
-                over {data.length} days
+                {t("over {count} days", { count: data.length })}
               </>
             )}
           </p>
@@ -122,20 +126,19 @@ export default function FollowerChart({
             onClick={() => setShowTable((v) => !v)}
             className="rounded border border-border px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-foreground"
           >
-            {showTable ? "Show chart" : "Show table"}
+            {showTable ? t("Show chart") : t("Show table")}
           </button>
         )}
       </div>
 
       {data.length < 2 ? (
         <div className="mt-6 rounded border border-border bg-surface/60 p-6 text-center">
-          <p className="text-sm text-foreground">Collecting follower history</p>
+          <p className="text-sm text-foreground">{t("Collecting follower history")}</p>
           <p className="mt-1 text-sm text-muted">
             {data.length === 0
-              ? "No snapshots recorded yet."
-              : "One day recorded so far."}{" "}
-            A point is added daily — the chart appears once there are at least
-            two.
+              ? t("No snapshots recorded yet.")
+              : t("One day recorded so far.")}{" "}
+            {t("A point is added daily — the chart appears once there are at least two.")}
           </p>
         </div>
       ) : showTable ? (
@@ -143,22 +146,22 @@ export default function FollowerChart({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-zinc-500">
-                <th className="py-2 pr-4 font-medium">Date</th>
-                <th className="py-2 px-3 font-medium text-right">Followers</th>
-                <th className="py-2 pl-3 font-medium text-right">Change</th>
+                <th className="py-2 pr-4 font-medium">{t("Date")}</th>
+                <th className="py-2 px-3 font-medium text-right">{t("Followers")}</th>
+                <th className="py-2 pl-3 font-medium text-right">{t("Change")}</th>
               </tr>
             </thead>
             <tbody>
               {[...data].reverse().map((p) => (
                 <tr key={p.date} className="border-b border-border last:border-0">
                   <td className="py-2 pr-4 text-foreground">
-                    {formatDay(p.date)}
+                    {formatDay(p.date, locale)}
                   </td>
                   <td className="py-2 px-3 text-right text-muted">
-                    {p.followers.toLocaleString()}
+                    {p.followers.toLocaleString(locale)}
                   </td>
                   <td className="py-2 pl-3 text-right text-muted">
-                    {p.delta === null ? "—" : formatSigned(p.delta)}
+                    {p.delta === null ? "—" : formatSigned(p.delta, locale)}
                   </td>
                 </tr>
               ))}
@@ -179,14 +182,14 @@ export default function FollowerChart({
               />
               <XAxis
                 dataKey="date"
-                tickFormatter={formatDay}
+                tickFormatter={(value) => formatDay(value, locale)}
                 tick={{ fill: AXIS_TEXT, fontSize: 12 }}
                 stroke={GRID_COLOR}
                 tickLine={false}
                 minTickGap={24}
               />
               <YAxis
-                tickFormatter={formatCompact}
+                tickFormatter={(value) => formatCompact(value, locale)}
                 tick={{ fill: AXIS_TEXT, fontSize: 12 }}
                 stroke={GRID_COLOR}
                 tickLine={false}

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import type { Locale } from "@/lib/i18n";
 import {
   calculateCtr,
   normalizeTopKeywords,
@@ -26,7 +27,7 @@ function getDayWindow(daysAgo: number) {
   return { start, end };
 }
 
-export async function getCampaignReportBySlug(shareSlug: string) {
+export async function getCampaignReportBySlug(shareSlug: string, locale: Locale = "en") {
   const automation = await prisma.automation.findFirst({
     where: {
       reportShareSlug: shareSlug,
@@ -140,7 +141,7 @@ export async function getCampaignReportBySlug(shareSlug: string) {
       ]);
 
       return {
-        date: start.toLocaleDateString("en-US", {
+        date: start.toLocaleDateString(locale, {
           month: "short",
           day: "numeric",
         }),

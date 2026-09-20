@@ -6,6 +6,7 @@
  * Overview cards, 7-day chart, and recent activity feed.
  */
 
+import { useI18n } from "@/lib/i18n/provider";
 import { useEffect, useState } from "react";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatCard from "@/components/stat-card";
@@ -41,6 +42,7 @@ interface DashboardStats {
 }
 
 export default function DashboardPage() {
+  const { t, label } = useI18n();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
@@ -91,17 +93,15 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-            Hello, {stats?.userName ?? "there"}!
+            {t("Hello, {name}!", { name: stats?.userName ?? t("there") })}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {connectedCount} connected{" "}
-            {connectedCount === 1 ? "account" : "accounts"}
+            {t(connectedCount === 1 ? "{count} connected account" : "{count} connected accounts", { count: connectedCount })}
             {" · "}
-            {stats?.contactsCount ?? 0}{" "}
-            {stats?.contactsCount === 1 ? "contact" : "contacts"}
+            {t(stats?.contactsCount === 1 ? "{count} contact" : "{count} contacts", { count: stats?.contactsCount ?? 0 })}
             {" · "}
             <a href="/logs" className="text-accent hover:underline">
-              See activity
+              {t("See activity")}
             </a>
           </p>
         </div>
@@ -117,24 +117,24 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
         <StatCard
-          label="Active Campaigns"
+          label={t("Active Campaigns")}
           value={stats?.activeAutomations ?? 0}
         />
-        <StatCard label="DMs Sent" value={stats?.dmsSentMonth ?? 0} />
-        <StatCard label="Skipped" value={stats?.dmsSkippedMonth ?? 0} />
-        <StatCard label="Failed" value={stats?.dmsFailedMonth ?? 0} />
-        <StatCard label="Clicks" value={stats?.clicksThisMonth ?? 0} />
-        <StatCard label="CTR" value={`${stats?.ctrThisMonth ?? 0}%`} />
+        <StatCard label={t("DMs Sent")} value={stats?.dmsSentMonth ?? 0} />
+        <StatCard label={t("Skipped")} value={stats?.dmsSkippedMonth ?? 0} />
+        <StatCard label={t("Failed")} value={stats?.dmsFailedMonth ?? 0} />
+        <StatCard label={t("Clicks")} value={stats?.clicksThisMonth ?? 0} />
+        <StatCard label={t("CTR")} value={`${stats?.ctrThisMonth ?? 0}%`} />
       </div>
 
       {/* Chart + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 sm:gap-6">
         {/* 7-Day Chart */}
         <div className="lg:col-span-3 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-6">DMs — Last 7 Days</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-6">{t("DMs — Last 7 Days")}</h2>
           <div className="flex items-end gap-1.5 h-40 sm:gap-2">
             {stats?.dailyDMs.map((day) => (
-              <div key={day.date} className="min-w-0 flex-1 flex flex-col items-center gap-2">
+              <div key={label(day.date)} className="min-w-0 flex-1 flex flex-col items-center gap-2">
                 <span className="text-xs text-muted font-medium">{day.count}</span>
                 <div
                   className="w-full rounded-sm bg-accent min-h-[4px]"
@@ -142,7 +142,7 @@ export default function DashboardPage() {
                 />
                 {/* Seven labels share a phone's width, so they must not wrap. */}
                 <span className="w-full truncate text-center text-[10px] text-zinc-500">
-                  {day.date}
+                  {label(day.date)}
                 </span>
               </div>
             ))}
@@ -151,10 +151,10 @@ export default function DashboardPage() {
 
         {/* Top Keywords */}
         <div className="lg:col-span-1 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Top Keywords</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Top Keywords")}</h2>
           <div className="space-y-3">
             {stats?.topKeywords.length === 0 && (
-              <p className="text-sm text-muted py-8">No keyword matches yet</p>
+              <p className="text-sm text-muted py-8">{t("No keyword matches yet")}</p>
             )}
             {stats?.topKeywords.map((keyword) => (
               <div key={keyword.keyword} className="flex items-center justify-between gap-3">
@@ -169,10 +169,10 @@ export default function DashboardPage() {
 
         {/* Recent Activity */}
         <div className="lg:col-span-2 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Recent Activity</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Recent Activity")}</h2>
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {stats?.recentLogs.length === 0 && (
-              <p className="text-sm text-muted text-center py-8">No activity yet</p>
+              <p className="text-sm text-muted text-center py-8">{t("No activity yet")}</p>
             )}
             {stats?.recentLogs.map((log) => (
               <div

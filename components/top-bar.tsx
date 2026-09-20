@@ -6,10 +6,15 @@
  * Page title, mobile hamburger, and connection status.
  */
 
+import type { StaticMessageKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/provider";
 import { usePathname } from "next/navigation";
 
-const pageTitles: Record<string, string> = {
+const pageTitles: Record<string, StaticMessageKey> = {
   "/dashboard": "Dashboard",
+  "/overview": "Overview",
+  "/inbox": "Inbox",
+  "/campaigns/import": "Import campaigns",
   "/campaigns": "Campaigns",
   "/campaigns/new": "New Campaign",
   "/automations": "Campaigns",
@@ -30,8 +35,12 @@ export default function TopBar({
   instagramUsername,
   instagramAccountCount,
 }: TopBarProps) {
+  const { t } = useI18n();
   const pathname = usePathname();
-  const title = pageTitles[pathname] ?? "Dashboard";
+  const title: StaticMessageKey = pageTitles[pathname] ?? (
+    pathname.endsWith("/edit") ? "Edit campaign"
+      : pathname.startsWith("/campaigns/") ? "Campaign details" : "Dashboard"
+  );
 
   return (
     <header
@@ -48,17 +57,17 @@ export default function TopBar({
         <button
           onClick={onMenuClick}
           className="lg:hidden shrink-0 px-2.5 py-1.5 rounded border border-border text-sm text-muted hover:text-foreground"
-          aria-label="Toggle sidebar"
+          aria-label={t("Toggle sidebar")}
         >
-          Menu
+          {t("Menu")}
         </button>
-        <h1 className="truncate text-base font-semibold sm:text-lg">{title}</h1>
+        <h1 className="truncate text-base font-semibold sm:text-lg">{t(title)}</h1>
       </div>
 
       {instagramAccountCount > 0 ? (
         <p className="shrink-0 truncate text-sm text-muted">
           {instagramAccountCount > 1
-            ? `${instagramAccountCount} accounts`
+            ? t("{count} accounts", { count: instagramAccountCount })
             : `@${instagramUsername}`}
         </p>
       ) : (
@@ -67,8 +76,8 @@ export default function TopBar({
           className="shrink-0 whitespace-nowrap text-sm font-medium px-3 py-1.5 rounded bg-accent text-white hover:bg-accent-hover"
         >
           {/* Full label needs more room than a 360px header has to spare. */}
-          <span className="sm:hidden">Connect</span>
-          <span className="hidden sm:inline">Connect Instagram</span>
+          <span className="sm:hidden">{t("Connect")}</span>
+          <span className="hidden sm:inline">{t("Connect Instagram")}</span>
         </a>
       )}
     </header>

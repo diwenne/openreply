@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/provider";
 import { useSyncExternalStore } from "react";
 import { DEMO_HOST } from "@/lib/env";
 
@@ -53,6 +54,7 @@ function dismiss() {
 }
 
 export function DemoNotice({ variant }: { variant: "banner" | "panel" }) {
+  const { t } = useI18n();
   const visible = useSyncExternalStore(
     subscribe,
     getSnapshot,
@@ -65,23 +67,21 @@ export function DemoNotice({ variant }: { variant: "banner" | "panel" }) {
     return (
       <div className="relative border-b border-orange-200 bg-orange-50">
         <p className="mx-auto w-full max-w-6xl px-10 py-2 text-center text-xs leading-5 text-zinc-700 sm:px-14 sm:text-sm">
-          <span className="font-bold text-zinc-900">{DEMO_HOST}</span> is a
-          demo. OpenReply is self-hosted — signing in here will not send DMs for
-          your account.{" "}
+          <span className="font-bold text-zinc-900">{DEMO_HOST}</span> {t("is a demo. OpenReply is self-hosted — signing in here will not send DMs for your account.")}{" "}
           <a
             href={SETUP_DOCS_URL}
             target="_blank"
             rel="noreferrer"
             className="font-bold text-orange-700 underline underline-offset-2 transition hover:text-orange-800"
           >
-            Deploy your own copy
+            {t("Deploy your own copy")}
           </a>
           .
         </p>
         <button
           type="button"
           onClick={dismiss}
-          aria-label="Dismiss demo notice"
+          aria-label={t("Dismiss demo notice")}
           className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-zinc-500 transition hover:text-zinc-900 sm:right-4"
         >
           <DismissIcon />
@@ -93,24 +93,22 @@ export function DemoNotice({ variant }: { variant: "banner" | "panel" }) {
   return (
     <div className="relative mb-5 rounded border border-warning/30 bg-warning/10 px-4 py-3 pr-10">
       <p className="text-sm leading-6 text-foreground">
-        <span className="font-semibold">{DEMO_HOST} is a demo instance.</span>{" "}
-        Signing in here will not send DMs for your Instagram account. OpenReply
-        is self-hosted, so it only works on a deployment you run yourself, with
-        your own Meta app and your own domain.{" "}
+        <span className="font-semibold">{DEMO_HOST} {t("is a demo instance.")}</span>{" "}
+        {t("Signing in here will not send DMs for your Instagram account. OpenReply is self-hosted, so it only works on a deployment you run yourself, with your own Meta app and your own domain.")}{" "}
         <a
           href={SETUP_DOCS_URL}
           target="_blank"
           rel="noreferrer"
           className="font-semibold text-warning underline underline-offset-2"
         >
-          Read the setup guide
+          {t("Read the setup guide")}
         </a>
         .
       </p>
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Dismiss demo notice"
+        aria-label={t("Dismiss demo notice")}
         className="absolute right-1 top-1 p-2 text-muted transition hover:text-foreground"
       >
         <DismissIcon />

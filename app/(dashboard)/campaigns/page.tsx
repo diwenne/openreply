@@ -6,6 +6,7 @@
  * Shows all campaigns as cards with toggle and delete.
  */
 
+import { useI18n } from "@/lib/i18n/provider";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -63,6 +64,7 @@ interface Campaign {
 }
 
 export default function CampaignsPage() {
+  const { t, label } = useI18n();
   const router = useRouter();
   const [automations, setAutomations] = useState<Campaign[]>([]);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
@@ -228,7 +230,7 @@ export default function CampaignsPage() {
   }
 
   async function deleteAutomation(id: string) {
-    if (!confirm("Delete this campaign? This cannot be undone.")) return;
+    if (!confirm(t("Delete this campaign? This cannot be undone."))) return;
     try {
       await fetch(`/api/automations?id=${id}`, { method: "DELETE" });
       setAutomations((prev) => prev.filter((a) => a.id !== id));
@@ -282,11 +284,9 @@ export default function CampaignsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-muted">
-            {filtered.length}
             {filtered.length !== automations.length
-              ? ` of ${automations.length}`
-              : ""}{" "}
-            campaign{automations.length !== 1 ? "s" : ""}
+              ? t("{count} of {total} campaigns", { count: filtered.length, total: automations.length })
+              : t(automations.length === 1 ? "{count} campaign" : "{count} campaigns", { count: automations.length })}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -301,13 +301,13 @@ export default function CampaignsPage() {
             href="/campaigns/import"
             className="flex-1 rounded border border-border px-4 py-2 text-center text-sm font-medium text-muted hover:text-foreground sm:flex-none"
           >
-            Import
+            {t("Import")}
           </Link>
           <Link
             href="/campaigns/new"
             className="flex-1 rounded bg-accent px-4 py-2 text-center text-sm font-medium text-white hover:bg-accent-hover sm:flex-none"
           >
-            New Campaign
+            {t("New Campaign")}
           </Link>
         </div>
       </div>
@@ -318,13 +318,13 @@ export default function CampaignsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search campaigns by name, keyword, or message…"
+            placeholder={t("Search campaigns by name, keyword, or message…")}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
           />
           <div className="inline-flex shrink-0 rounded-lg bg-surface p-1">
             {(["all", "active", "paused"] as const).map((s) => (
               <button
-                key={s}
+                key={label(s)}
                 type="button"
                 onClick={() => setStatusFilter(s)}
                 className={`rounded-md px-3 py-1.5 text-sm capitalize transition-colors ${
@@ -333,7 +333,7 @@ export default function CampaignsPage() {
                     : "text-muted hover:text-foreground"
                 }`}
               >
-                {s}
+                {label(s)}
               </button>
             ))}
           </div>
@@ -343,15 +343,15 @@ export default function CampaignsPage() {
       {/* Empty state */}
       {automations.length === 0 && (
         <div className="panel rounded p-8 text-center sm:p-12">
-          <h3 className="text-lg font-semibold mb-2">No campaigns yet</h3>
+          <h3 className="text-lg font-semibold mb-2">{t("No campaigns yet")}</h3>
           <p className="text-sm text-muted mb-6 max-w-sm mx-auto">
-            Create your first comment-to-DM campaign to turn a post or reel into a measurable conversation flow.
+            {t("Create your first comment-to-DM campaign to turn a post or reel into a measurable conversation flow.")}
           </p>
           <Link
             href="/campaigns/new"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
           >
-            Create Campaign
+            {t("Create Campaign")}
           </Link>
         </div>
       )}
@@ -359,7 +359,7 @@ export default function CampaignsPage() {
       {/* No matches for the current filter */}
       {automations.length > 0 && filtered.length === 0 && (
         <div className="panel rounded p-8 text-center text-sm text-muted">
-          No campaigns match your search.
+          {t("No campaigns match your search.")}
         </div>
       )}
 
@@ -384,13 +384,13 @@ export default function CampaignsPage() {
                       e.stopPropagation();
                       setPlayingVideo({ url: videoUrl, postUrl: auto.postUrl });
                     }}
-                    aria-label="Play reel preview"
+                    aria-label={t("Play reel preview")}
                     className="shrink-0"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={thumbnails[auto.postId]}
-                      alt="Campaign reel"
+                      alt={t("Campaign reel")}
                       className="w-12 h-12 rounded object-cover border border-border hover:border-border-hover"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
@@ -408,7 +408,7 @@ export default function CampaignsPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={thumbnails[auto.postId]}
-                      alt="Campaign post"
+                      alt={t("Campaign post")}
                       className="w-12 h-12 rounded object-cover border border-border"
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
@@ -430,21 +430,21 @@ export default function CampaignsPage() {
                         : "bg-zinc-500/10 text-muted"
                     }`}
                   >
-                    {auto.isActive ? "Active" : "Paused"}
+                    {auto.isActive ? t("Active") : t("Paused")}
                   </span>
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-warning">
-                      Waiting for next reel
+                      {t("Waiting for next reel")}
                     </span>
                   )}
                   {auto.requireFollow && (
                     <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                      Follow gate
+                      {t("Follow gate")}
                     </span>
                   )}
                   {auto.trackedLinks.length >= 2 && (
                     <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                      2 links
+                      {t("2 links")}
                     </span>
                   )}
                 </div>
@@ -462,7 +462,7 @@ export default function CampaignsPage() {
                 </div>
 
                 {/* DM preview */}
-                <p className="text-sm text-muted truncate">&ldquo;{auto.dmMessage}&rdquo;</p>
+                <p className="text-sm text-muted truncate">&ldquo;{auto.dmMessage}{t("”")}</p>
 
                 {/* Tracked link sent */}
                 {auto.trackedLinks[0]?.trackedUrl && (
@@ -474,20 +474,20 @@ export default function CampaignsPage() {
                 {/* Stats */}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-xs text-zinc-500">
                   <span className="font-medium text-foreground">
-                    {auto._count.dmLogs} runs
+                    {auto._count.dmLogs} {t("runs")}
                   </span>
                   <span>·</span>
                   <span className="font-medium text-foreground">
-                    {auto.analytics.ctr}% CTR
+                    {auto.analytics.ctr}{t("% CTR")}
                   </span>
                   <span>·</span>
-                  <span>{auto.analytics.sent} sent</span>
+                  <span>{auto.analytics.sent} {t("sent")}</span>
                   <span>·</span>
-                  <span>{auto.analytics.skipped} skipped</span>
+                  <span>{auto.analytics.skipped} {t("skipped")}</span>
                   <span>·</span>
-                  <span>{auto.analytics.failed} failed</span>
+                  <span>{auto.analytics.failed} {t("failed")}</span>
                   <span>·</span>
-                  <span>{auto.analytics.clicks} clicks</span>
+                  <span>{auto.analytics.clicks} {t("clicks")}</span>
                 </div>
 
                 {auto.analytics.topKeywords.length > 0 && (
@@ -515,7 +515,7 @@ export default function CampaignsPage() {
                     onClick={() => void copyReelUrl(auto)}
                     className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-foreground"
                   >
-                    {copiedId === auto.id ? "Copied!" : "Copy URL"}
+                    {copiedId === auto.id ? t("Copied!") : t("Copy URL")}
                   </button>
                 )}
                 {/* Toggle */}
@@ -540,7 +540,7 @@ export default function CampaignsPage() {
                     onClick={() =>
                       setMenuOpenId((cur) => (cur === auto.id ? null : auto.id))
                     }
-                    aria-label="More actions"
+                    aria-label={t("More actions")}
                     className="px-2 py-1 rounded text-lg leading-none text-muted hover:text-foreground"
                   >
                     ⋯
@@ -556,7 +556,7 @@ export default function CampaignsPage() {
                           onClick={() => void duplicateAutomation(auto.id)}
                           className="block w-full px-3 py-2 text-left text-sm text-foreground hover:bg-surface-hover"
                         >
-                          Duplicate
+                          {t("Duplicate")}
                         </button>
                         <button
                           onClick={() => {
@@ -565,7 +565,7 @@ export default function CampaignsPage() {
                           }}
                           className="block w-full px-3 py-2 text-left text-sm text-error hover:bg-surface-hover"
                         >
-                          Delete
+                          {t("Delete")}
                         </button>
                       </div>
                     </>
@@ -596,7 +596,7 @@ export default function CampaignsPage() {
                   rel="noreferrer"
                   className="text-zinc-300 hover:text-white"
                 >
-                  Open on Instagram
+                  {t("Open on Instagram")}
                 </a>
               )}
               <button
@@ -604,7 +604,7 @@ export default function CampaignsPage() {
                 onClick={() => setPlayingVideo(null)}
                 className="text-zinc-300 hover:text-white"
               >
-                Close
+                {t("Close")}
               </button>
             </div>
             <video

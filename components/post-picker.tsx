@@ -9,6 +9,7 @@
  * Fetches from /api/instagram/posts.
  */
 
+import { useI18n } from "@/lib/i18n/provider";
 import { useEffect, useState } from "react";
 import { readCache, writeCache } from "@/lib/client-cache";
 
@@ -43,6 +44,7 @@ export default function PostPicker({
   usedPostIds,
   onSelect,
 }: PostPickerProps) {
+  const { t } = useI18n();
   const [limitations, setLimitations] = useState<string[]>([]);
   const [posts, setPosts] = useState<InstagramPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,8 +115,8 @@ export default function PostPicker({
   if (error) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted">{error}</p>
-        <p className="text-xs text-zinc-500 mt-1">Connect your Instagram account first</p>
+        <p className="text-sm text-muted">{error === "Failed to load posts" ? t("Failed to load posts") : error}</p>
+        <p className="text-xs text-zinc-500 mt-1">{t("Connect your Instagram account first")}</p>
       </div>
     );
   }
@@ -122,7 +124,7 @@ export default function PostPicker({
   if (posts.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted">No posts found</p>
+        <p className="text-sm text-muted">{t("No posts found")}</p>
       </div>
     );
   }
@@ -149,21 +151,21 @@ export default function PostPicker({
             // cleared, which is the case this whole change exists to avoid.
             setShown(PAGE_SIZE);
           }}
-          placeholder="Search your posts by caption…"
+          placeholder={t("Search your posts by caption…")}
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
         />
         <span className="shrink-0 text-xs text-muted">{posts.length}</span>
       </div>
       {visible.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">
-          No posts match &ldquo;{query}&rdquo;
+          {t("No posts match “")}{query}{t("”")}
         </p>
       ) : (
         <>
           {usedPostIds && Object.keys(usedPostIds).length > 0 && (
             <p className="flex items-center gap-1.5 px-1 text-[11px] text-muted">
               <span className="inline-block h-2.5 w-2.5 rounded-sm border border-warning/50" />
-              Already used
+              {t("Already used")}
             </p>
           )}
           {/* auto-rows-min + content-start keep each row at its natural height.
@@ -188,7 +190,7 @@ export default function PostPicker({
               setHoveredId((cur) => (cur === post.id ? null : cur))
             }
             aria-pressed={isSelected}
-            title={isUsed ? `Already used by "${usedByName}"` : undefined}
+            title={isUsed && usedByName ? t("Already used by \"{name}\"", { name: usedByName }) : undefined}
             className={`
               relative aspect-square rounded overflow-hidden border-2
               ${
@@ -203,14 +205,14 @@ export default function PostPicker({
             {thumb ? (
               <img
                 src={thumb}
-                alt={post.caption?.slice(0, 50) ?? "Instagram post"}
+                alt={post.caption?.slice(0, 50) ?? t("Instagram post")}
                 loading="lazy"
                 decoding="async"
                 className={`w-full h-full object-cover ${isUsed ? "opacity-75" : ""}`}
               />
             ) : (
               <div className="w-full h-full bg-surface flex items-center justify-center">
-                <span className="text-xs text-muted">No image</span>
+                <span className="text-xs text-muted">{t("No image")}</span>
               </div>
             )}
             {showVideo && (
@@ -229,7 +231,7 @@ export default function PostPicker({
             )}
             {isSelected && (
               <span className="absolute bottom-0 inset-x-0 bg-accent text-white text-xs py-1">
-                Selected
+                {t("Selected")}
               </span>
             )}
           </button>
@@ -242,7 +244,7 @@ export default function PostPicker({
               onClick={() => setShown((n) => n + PAGE_SIZE)}
               className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
             >
-              Show {Math.min(PAGE_SIZE, remaining)} more
+              {t("Show")} {Math.min(PAGE_SIZE, remaining)} {t("more")}
             </button>
           )}
         </>

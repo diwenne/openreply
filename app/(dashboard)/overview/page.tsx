@@ -8,22 +8,24 @@
  * the insights permission); likes and comments are always available.
  */
 
+import type { Locale } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/provider";
 import { useEffect, useState } from "react";
 import AccountSelect from "@/components/account-select";
 import StatCard from "@/components/stat-card";
 import FollowerChart from "@/components/follower-chart";
 import type { OverviewResponse } from "@/app/api/instagram/overview/route";
 
-function formatNumber(n: number | null): string {
+function formatNumber(n: number | null, locale: Locale): string {
   if (n === null) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
+  return n.toLocaleString(locale);
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: Locale): string {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 const COUNT_OPTIONS = [
@@ -31,9 +33,10 @@ const COUNT_OPTIONS = [
   { value: "50", label: "Last 50" },
   { value: "100", label: "Last 100" },
   { value: "all", label: "All time" },
-];
+] as const;
 
 export default function OverviewPage() {
+  const { t, locale } = useI18n();
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,13 +90,13 @@ export default function OverviewPage() {
   if (error) {
     return (
       <div className="panel rounded p-8 text-center">
-        <p className="text-sm text-error">{error}</p>
+        <p className="text-sm text-error">{error === "Failed to load overview" ? t("Failed to load overview") : error}</p>
         {error.includes("connect") && (
           <a
             href="/api/instagram/connect"
             className="mt-4 inline-block text-sm text-accent hover:underline"
           >
-            Connect Instagram
+            {t("Connect Instagram")}
           </a>
         )}
       </div>
@@ -110,25 +113,25 @@ export default function OverviewPage() {
       {data.limitations?.map(note => <p key={note} className="text-sm text-muted">{note}</p>)}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-foreground">Overview</h1>
+          <h1 className="text-lg font-semibold text-foreground">{t("Overview")}</h1>
           <p className="text-sm text-muted mt-1">
-            {data.provider !== "ZERNIO" && data.requestedCount === "all" ? "All-time" : "Recent"} —{" "}
-            {totals.posts} post{totals.posts === 1 ? "" : "s"} from @
+            {data.provider !== "ZERNIO" && data.requestedCount === "all" ? t("All-time") : t("Recent")} —{" "}
+            {t(totals.posts === 1 ? "{count} post" : "{count} posts", { count: totals.posts })} {t("from @")}
             {data.account.username}
-            {data.truncated ? ` (capped at ${totals.posts})` : ""}
+            {data.truncated ? t(" (capped at {count})", { count: totals.posts }) : ""}
           </p>
           {followers !== null && (
             // Kept out of the tile row below: that row sums the selected posts,
             // whereas this is a current account-level total.
             <p className="mt-1 text-sm text-muted">
-              {followers.toLocaleString()} followers
+              {followers.toLocaleString(locale)} {t("followers")}
             </p>
           )}
         </div>
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <label className="flex flex-col gap-2 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Range
+              {t("Range")}
             </span>
             <select
               value={count}
@@ -137,7 +140,7 @@ export default function OverviewPage() {
             >
               {COUNT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {t(o.label)}
                 </option>
               ))}
             </select>
@@ -159,29 +162,28 @@ export default function OverviewPage() {
       {!insightsAvailable && (
         <div className="panel rounded p-4 border border-border">
           <p className="text-sm text-foreground">
-            Views, reach, saved and shares need the insights permission.
+            {t("Views, reach, saved and shares need the insights permission.")}
           </p>
           <p className="text-sm text-muted mt-1">
-            Reconnect your account to grant it — likes and comments are shown in
-            the meantime.
+            {t("Reconnect your account to grant it — likes and comments are shown in the meantime.")}
           </p>
           <a
             href="/api/instagram/connect"
             className="mt-3 inline-block text-sm text-accent hover:underline"
           >
-            Reconnect Instagram
+            {t("Reconnect Instagram")}
           </a>
         </div>
       )}
 
       {/* Aggregate totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <StatCard label="Views" value={formatNumber(totals.views)} />
-        <StatCard label="Reach" value={formatNumber(totals.reach)} />
-        <StatCard label="Likes" value={formatNumber(totals.likes)} />
-        <StatCard label="Comments" value={formatNumber(totals.comments)} />
-        <StatCard label="Saved" value={formatNumber(totals.saved)} />
-        <StatCard label="Shares" value={formatNumber(totals.shares)} />
+        <StatCard label={t("Views")} value={formatNumber(totals.views, locale)} />
+        <StatCard label={t("Reach")} value={formatNumber(totals.reach, locale)} />
+        <StatCard label={t("Likes")} value={formatNumber(totals.likes, locale)} />
+        <StatCard label={t("Comments")} value={formatNumber(totals.comments, locale)} />
+        <StatCard label={t("Saved")} value={formatNumber(totals.saved, locale)} />
+        <StatCard label={t("Shares")} value={formatNumber(totals.shares, locale)} />
       </div>
 
       {/* Follower trend — account-level, independent of the post range */}
@@ -189,9 +191,9 @@ export default function OverviewPage() {
 
       {/* Per-post table */}
       <div className="panel rounded p-4 sm:p-6">
-        <h2 className="text-sm font-semibold text-foreground mb-4">Posts</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-4">{t("Posts")}</h2>
         {posts.length === 0 ? (
-          <p className="text-sm text-muted py-8 text-center">No posts found</p>
+          <p className="text-sm text-muted py-8 text-center">{t("No posts found")}</p>
         ) : (
           // Eight metric columns can't compress into a phone; let the table keep
           // its natural width and scroll inside the panel instead.
@@ -199,14 +201,14 @@ export default function OverviewPage() {
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-zinc-500 border-b border-border">
-                  <th className="py-2 pr-4 font-medium">Post</th>
-                  <th className="py-2 px-3 font-medium text-right">Views</th>
-                  <th className="py-2 px-3 font-medium text-right">Reach</th>
-                  <th className="py-2 px-3 font-medium text-right">Likes</th>
-                  <th className="py-2 px-3 font-medium text-right">Comments</th>
-                  <th className="py-2 px-3 font-medium text-right">Saved</th>
-                  <th className="py-2 px-3 font-medium text-right">Shares</th>
-                  <th className="py-2 pl-3 font-medium text-right">Date</th>
+                  <th className="py-2 pr-4 font-medium">{t("Post")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Views")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Reach")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Likes")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Comments")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Saved")}</th>
+                  <th className="py-2 px-3 font-medium text-right">{t("Shares")}</th>
+                  <th className="py-2 pl-3 font-medium text-right">{t("Date")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,34 +225,34 @@ export default function OverviewPage() {
                           rel="noopener noreferrer"
                           className="text-foreground hover:text-accent truncate block"
                         >
-                          {p.caption || `${p.mediaType} post`}
+                          {p.caption || t("{type} post", { type: p.mediaType })}
                         </a>
                       ) : (
                         <span className="text-foreground truncate block">
-                          {p.caption || `${p.mediaType} post`}
+                          {p.caption || t("{type} post", { type: p.mediaType })}
                         </span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.views)}
+                      {formatNumber(p.views, locale)}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.reach)}
+                      {formatNumber(p.reach, locale)}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.likes)}
+                      {formatNumber(p.likes, locale)}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.comments)}
+                      {formatNumber(p.comments, locale)}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.saved)}
+                      {formatNumber(p.saved, locale)}
                     </td>
                     <td className="py-3 px-3 text-right text-muted">
-                      {formatNumber(p.shares)}
+                      {formatNumber(p.shares, locale)}
                     </td>
                     <td className="py-3 pl-3 text-right text-zinc-500">
-                      {formatDate(p.timestamp)}
+                      {formatDate(p.timestamp, locale)}
                     </td>
                   </tr>
                 ))}
