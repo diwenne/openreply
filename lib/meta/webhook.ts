@@ -82,7 +82,8 @@ interface WebhookEntry {
       is_echo?: boolean;
       is_deleted?: boolean;
       is_unsupported?: boolean;
-      attachments?: Array<{ type?: string }>;
+      attachments?: Array<{ type?: string; payload?: unknown }>;
+      reply_to?: { story?: unknown; mid?: string };
     };
   }>;
 }
@@ -92,6 +93,8 @@ export interface WebhookMessageEvent {
   messageId: string;
   messageText: string;
   senderId: string;
+  isStoryMention?: boolean;
+  isStoryReply?: boolean;
 }
 
 export interface WebhookPostbackEvent {
@@ -219,7 +222,17 @@ export function parseMessageEvents(
         continue;
       }
 
-      const text = message.text?.trim();
+      const isStoryMention = Boolean(
+        message.attachments?.some((a) => a.type === "story_mention")
+      );
+      const isStoryReply = Boolean(message.reply_to?.story);
+
+      let text = message.text?.trim();
+      if (!text) {
+        if (isStoryMention) text = "[Story Mention]";
+        else if (isStoryReply) text = "[Story Reply]";
+      }
+
       const messageId = message.mid;
       const senderId = messaging.sender?.id;
       const accountId = entry.id ?? messaging.recipient?.id;
@@ -233,6 +246,8 @@ export function parseMessageEvents(
         messageId,
         messageText: text,
         senderId,
+        isStoryMention,
+        isStoryReply,
       });
     }
   }

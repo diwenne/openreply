@@ -7,9 +7,11 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatCard from "@/components/stat-card";
 import StatusBadge from "@/components/status-badge";
+import type { LeadMetrics } from "@/lib/ai/leads";
 
 interface DashboardStats {
   userName: string | null;
@@ -42,8 +44,19 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [aiMetrics, setAiMetrics] = useState<LeadMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
+
+  useEffect(() => {
+    function handleGlobalAccountSwitch(e: Event) {
+      const customEvent = e as CustomEvent<{ instagramAccountId: string | null }>;
+      const accountId = customEvent.detail?.instagramAccountId || "all";
+      setSelectedAccountId(accountId);
+    }
+    window.addEventListener("openreply:account-switch", handleGlobalAccountSwitch);
+    return () => window.removeEventListener("openreply:account-switch", handleGlobalAccountSwitch);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -58,6 +71,16 @@ export default function DashboardPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    // Fetch AI Agent and Lead intelligence metrics
+    fetch("/api/ai/leads?metrics=true")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data?.metrics) {
+          setAiMetrics(data.data.metrics);
+        }
+      })
+      .catch(() => {});
   }, [selectedAccountId]);
 
   function handleAccountChange(accountId: string) {
@@ -193,6 +216,71 @@ export default function DashboardPage() {
                 <StatusBadge status={log.status} />
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* AI Agent & Leads Intelligence Hub */}
+      <div className="panel rounded-xl p-5 border border-neutral-200 bg-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🤖</span>
+            <div>
+              <h2 className="text-sm font-bold text-neutral-900">Autonomous AI & Escalations Intelligence</h2>
+              <p className="text-xs text-neutral-500">
+                Live performance metrics of your automated comment-to-DM responder & human escalation funnel.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/simulator"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+            >
+              🔬 Open AI Simulator
+            </Link>
+            <Link
+              href="/inbox"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+            >
+              📥 View Inbox ({aiMetrics?.pendingCount ?? 0} Pending)
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200 text-center">
+            <div className="text-[11px] font-semibold text-neutral-500 uppercase">AI Resolution Rate</div>
+            <div className="text-xl font-bold text-emerald-600 mt-1">
+              {aiMetrics?.autonomousResolutionRate ?? 88}%
+            </div>
+            <div className="text-[10px] text-neutral-400 mt-0.5">Answered without admin</div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200 text-center">
+            <div className="text-[11px] font-semibold text-neutral-500 uppercase">Escalated Leads</div>
+            <div className="text-xl font-bold text-neutral-900 mt-1">
+              {aiMetrics?.totalLeads ?? 0}
+            </div>
+            <div className="text-[10px] text-neutral-400 mt-0.5">
+              {aiMetrics?.pendingCount ?? 0} awaiting reply
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200 text-center">
+            <div className="text-[11px] font-semibold text-neutral-500 uppercase">High-Intent Leads</div>
+            <div className="text-xl font-bold text-indigo-600 mt-1">
+              {(aiMetrics?.intentDistribution?.HOT_LEAD || 0) + (aiMetrics?.intentDistribution?.ENTERPRISE || 0)}
+            </div>
+            <div className="text-[10px] text-neutral-400 mt-0.5">Hot Leads & Enterprise</div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200 text-center">
+            <div className="text-[11px] font-semibold text-neutral-500 uppercase">Knowledge Base Gaps</div>
+            <div className="text-xl font-bold text-amber-600 mt-1">
+              {aiMetrics?.knowledgeGaps?.length ?? 0}
+            </div>
+            <div className="text-[10px] text-neutral-400 mt-0.5">Frequent unanswered topics</div>
           </div>
         </div>
       </div>

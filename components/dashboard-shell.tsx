@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Sidebar from "@/components/sidebar";
 import TopBar from "@/components/top-bar";
+import type { AccountOption } from "@/components/account-select";
 
 interface DashboardShellProps {
   children: React.ReactNode;
   workspaceName: string;
   instagramUsername: string | null;
   instagramAccountCount: number;
+  accounts?: AccountOption[];
 }
 
 export default function DashboardShell({
@@ -16,6 +18,7 @@ export default function DashboardShell({
   workspaceName,
   instagramUsername,
   instagramAccountCount,
+  accounts = [],
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -34,6 +37,7 @@ export default function DashboardShell({
           onMenuClick={() => setSidebarOpen(true)}
           instagramUsername={instagramUsername}
           instagramAccountCount={instagramAccountCount}
+          accounts={accounts}
         />
 
         {/* overflow-x-hidden: enabling vertical scrolling makes the browser

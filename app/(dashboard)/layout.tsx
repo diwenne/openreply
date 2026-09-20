@@ -22,7 +22,7 @@ export default async function DashboardLayout({
   const accounts = await prisma.instagramAccount.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { connectedAt: "desc" },
-    select: { username: true },
+    select: { id: true, username: true, instagramId: true, name: true },
   });
 
   return (
@@ -30,6 +30,7 @@ export default async function DashboardLayout({
       workspaceName={workspace.name}
       instagramUsername={accounts[0]?.username ?? null}
       instagramAccountCount={accounts.length}
+      accounts={accounts}
     >
       {children}
     </DashboardShell>

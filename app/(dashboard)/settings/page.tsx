@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
 import { ZernioConnection } from "@/components/zernio-connection";
 import { InstagramConnectNotice } from "@/components/instagram-connect-notice";
+import { AISettingsCard } from "@/components/ai-settings-card";
+import { WebhooksSettingsCard } from "@/components/webhooks-settings-card";
 
 interface SettingsData {
   workspace: {
@@ -137,6 +139,10 @@ export default function SettingsPage() {
       <Suspense fallback={null}>
         <InstagramConnectNotice />
       </Suspense>
+
+      <AISettingsCard />
+
+      <WebhooksSettingsCard />
 
       <ZernioConnection canManage={canManageMembers} />
 

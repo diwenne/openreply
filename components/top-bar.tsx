@@ -7,6 +7,9 @@
  */
 
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
+import { TopAccountSwitcher } from "@/components/top-account-switcher";
+import type { AccountOption } from "@/components/account-select";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -14,6 +17,8 @@ const pageTitles: Record<string, string> = {
   "/campaigns/new": "New Campaign",
   "/automations": "Campaigns",
   "/automations/new": "New Campaign",
+  "/inbox": "Inquiries & Leads",
+  "/simulator": "AI Simulator",
   "/logs": "DM Logs",
   "/settings": "Settings",
   "/diagnostics": "Diagnostics",
@@ -23,12 +28,14 @@ interface TopBarProps {
   onMenuClick: () => void;
   instagramUsername: string | null;
   instagramAccountCount: number;
+  accounts?: AccountOption[];
 }
 
 export default function TopBar({
   onMenuClick,
   instagramUsername,
   instagramAccountCount,
+  accounts = [],
 }: TopBarProps) {
   const pathname = usePathname();
   const title = pageTitles[pathname] ?? "Dashboard";
@@ -55,22 +62,17 @@ export default function TopBar({
         <h1 className="truncate text-base font-semibold sm:text-lg">{title}</h1>
       </div>
 
-      {instagramAccountCount > 0 ? (
-        <p className="shrink-0 truncate text-sm text-muted">
-          {instagramAccountCount > 1
-            ? `${instagramAccountCount} accounts`
-            : `@${instagramUsername}`}
-        </p>
-      ) : (
-        <a
-          href="/api/instagram/connect"
-          className="shrink-0 whitespace-nowrap text-sm font-medium px-3 py-1.5 rounded bg-accent text-white hover:bg-accent-hover"
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        <Suspense
+          fallback={
+            <div className="text-xs text-muted">
+              {instagramAccountCount > 0 ? `@${instagramUsername}` : "Connecting..."}
+            </div>
+          }
         >
-          {/* Full label needs more room than a 360px header has to spare. */}
-          <span className="sm:hidden">Connect</span>
-          <span className="hidden sm:inline">Connect Instagram</span>
-        </a>
-      )}
+          <TopAccountSwitcher initialAccounts={accounts} />
+        </Suspense>
+      </div>
     </header>
   );
 }

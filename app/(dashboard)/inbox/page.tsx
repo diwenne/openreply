@@ -15,6 +15,9 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { readCache, writeCache } from "@/lib/client-cache";
 import type { ConversationListItem } from "@/app/api/instagram/conversations/route";
 import type { ThreadMessage } from "@/app/api/instagram/conversations/[id]/route";
+import { InboxLeadsView } from "@/components/inbox-leads-view";
+import { FollowUpQueueView } from "@/components/followup-queue-view";
+import { KnowledgeGapsCard } from "@/components/knowledge-gaps-card";
 
 const POLL_MS = 12_000;
 // Cached list/threads are shown instantly on revisit, then revalidated in the
@@ -56,6 +59,42 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  const [inboxTab, setInboxTab] = useState<"dm" | "leads" | "followups" | "knowledge">("dm");
+  const [pendingLeadsCount, setPendingLeadsCount] = useState<number>(2);
+  const [pendingFollowUpsCount, setPendingFollowUpsCount] = useState<number>(2);
+  const [pendingGapsCount, setPendingGapsCount] = useState<number>(3);
+
+  useEffect(() => {
+    fetch("/api/ai/leads")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && typeof data.data?.pendingCount === "number") {
+          setPendingLeadsCount(data.data.pendingCount);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/ai/followups")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.followUps)) {
+          setPendingFollowUpsCount(
+            data.followUps.filter((f: { status: string }) => f.status === "SCHEDULED").length
+          );
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/ai/knowledge-gaps")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data?.stats) {
+          setPendingGapsCount(data.data.stats.pendingReview);
+        }
+      })
+      .catch(() => {});
+  }, [inboxTab]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const conversationRequests = useRef(new Set<string>());
 
@@ -88,6 +127,18 @@ export default function InboxPage() {
     if (typeof window === "undefined" || !selectedAccountId) return;
     window.sessionStorage.setItem("inbox:selectedAccount", selectedAccountId);
   }, [selectedAccountId]);
+
+  // Sync with global top-bar account switcher
+  useEffect(() => {
+    function handleGlobalAccountSwitch(e: Event) {
+      const customEvent = e as CustomEvent<{ instagramAccountId: string | null }>;
+      if (customEvent.detail?.instagramAccountId) {
+        setSelectedAccountId(customEvent.detail.instagramAccountId);
+      }
+    }
+    window.addEventListener("openreply:account-switch", handleGlobalAccountSwitch);
+    return () => window.removeEventListener("openreply:account-switch", handleGlobalAccountSwitch);
+  }, []);
 
   const loadConversations = useCallback(
     async (silent: boolean) => {
@@ -261,8 +312,72 @@ export default function InboxPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <h1 className="text-lg font-semibold text-foreground">Inbox</h1>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Inbox</h1>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => setInboxTab("dm")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                inboxTab === "dm"
+                  ? "bg-foreground text-background"
+                  : "bg-surface text-muted hover:text-foreground border border-border"
+              }`}
+            >
+              💬 Instagram DMs
+            </button>
+            <button
+              type="button"
+              onClick={() => setInboxTab("leads")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                inboxTab === "leads"
+                  ? "bg-indigo-600 text-white"
+                  : "bg-surface text-muted hover:text-foreground border border-border"
+              }`}
+            >
+              <span>🎯 Leads & Escalations</span>
+              {pendingLeadsCount > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-rose-500 text-white">
+                  {pendingLeadsCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInboxTab("followups")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                inboxTab === "followups"
+                  ? "bg-amber-600 text-white"
+                  : "bg-surface text-muted hover:text-foreground border border-border"
+              }`}
+            >
+              <span>⚡ Follow-Up Queue</span>
+              {pendingFollowUpsCount > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-amber-500 text-white">
+                  {pendingFollowUpsCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInboxTab("knowledge")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                inboxTab === "knowledge"
+                  ? "bg-purple-600 text-white"
+                  : "bg-surface text-muted hover:text-foreground border border-border"
+              }`}
+            >
+              <span>🎓 Knowledge Gaps</span>
+              {pendingGapsCount > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-purple-500 text-white">
+                  {pendingGapsCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
         {accounts.length > 1 && (
           <AccountSelect
             accounts={accounts}
@@ -273,7 +388,26 @@ export default function InboxPage() {
         )}
       </div>
 
-      <div className="grid h-[calc(100dvh-11rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
+      {inboxTab === "leads" ? (
+        <InboxLeadsView />
+      ) : inboxTab === "followups" ? (
+        <FollowUpQueueView />
+      ) : inboxTab === "knowledge" ? (
+        <KnowledgeGapsCard
+          title="Automated Knowledge Gap Intelligence"
+          onGapApproved={() => {
+            fetch("/api/ai/knowledge-gaps")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success && d.data?.stats) {
+                  setPendingGapsCount(d.data.stats.pendingReview);
+                }
+              })
+              .catch(() => {});
+          }}
+        />
+      ) : (
+        <div className="grid h-[calc(100dvh-13rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
         {/* Conversation list. On mobile it takes the full pane and is hidden
             once a thread is open (ManyChat-style); on sm+ it is always shown. */}
         <div
@@ -416,6 +550,7 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

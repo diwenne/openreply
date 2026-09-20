@@ -23,6 +23,7 @@ import {
   IMPORT_ACCOUNT_KEY,
   type ImportRow,
 } from "@/lib/import-queue";
+import { CampaignAIRagCard } from "@/components/campaign-ai-rag-card";
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
@@ -180,6 +181,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpDelayMinutes, setFollowUpDelayMinutes] = useState(0);
+  const [storyMentionEnabled, setStoryMentionEnabled] = useState(false);
+  const [storyMentionMessage, setStoryMentionMessage] = useState("");
+  const [storyReplyEnabled, setStoryReplyEnabled] = useState(false);
+  const [storyReplyMessage, setStoryReplyMessage] = useState("");
+  const [followUpCondition, setFollowUpCondition] = useState<"ALWAYS" | "IF_NOT_CLICKED" | "IF_NOT_REPLIED">("IF_NOT_CLICKED");
+  const [followUpType, setFollowUpType] = useState<"CUSTOM_MESSAGE" | "AI_SMART_REENGAGE">("CUSTOM_MESSAGE");
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("dm");
 
@@ -288,6 +295,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
         setFollowUpDelayMinutes(c.followUpDelayMinutes ?? 0);
+
+        if (campaignId) {
+          fetch(`/api/ai/rag?campaignId=${campaignId}`)
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.success && res.data) {
+                setStoryMentionEnabled(res.data.storyMentionEnabled ?? false);
+                setStoryMentionMessage(res.data.storyMentionMessage ?? "");
+                setStoryReplyEnabled(res.data.storyReplyEnabled ?? false);
+                setStoryReplyMessage(res.data.storyReplyMessage ?? "");
+                setFollowUpCondition(res.data.followUpCondition ?? "IF_NOT_CLICKED");
+                setFollowUpType(res.data.followUpType ?? "CUSTOM_MESSAGE");
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -445,6 +468,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             });
       const data = await res.json();
       if (data.success) {
+        const savedCampaignId = data.data?.id || campaignId;
+        if (savedCampaignId) {
+          fetch("/api/ai/rag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              campaignId: savedCampaignId,
+              storyMentionEnabled,
+              storyMentionMessage,
+              storyReplyEnabled,
+              storyReplyMessage,
+              followUpCondition,
+              followUpType,
+            }),
+          }).catch(() => {});
+        }
         // The post we just assigned is now in use. Reflect it immediately so
         // the picker flags it on the next imported row — the fetch that builds
         // this map doesn't re-run while the builder stays mounted through the
@@ -698,6 +737,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           </Radio>
         </Section>
 
+        <CampaignAIRagCard
+          campaignId={campaignId}
+          postId={postId}
+          postCaption={postCaption}
+          keywords={keywordText.split(",").map((s) => s.trim()).filter(Boolean)}
+          dmMessage={dmMessage}
+        />
+
         <Section title="And this comment has">
           <Radio
             checked={matchMode === "specific"}
@@ -739,6 +786,59 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 : "A DM containing any of these words gets the same reply, no comment needed."}
             </p>
           )}
+
+          {/* Story Automations */}
+          <div className="space-y-3 rounded-lg border border-border/80 bg-surface/30 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  📸 Story @Mention Trigger
+                </span>
+                <p className="text-xs text-muted">
+                  Auto-deliver DM when someone mentions you in their Instagram Story
+                </p>
+              </div>
+              <Toggle
+                on={storyMentionEnabled}
+                onToggle={() => setStoryMentionEnabled(!storyMentionEnabled)}
+              />
+            </div>
+            {storyMentionEnabled && (
+              <div className="space-y-1.5 pt-1">
+                <input
+                  value={storyMentionMessage}
+                  onChange={(e) => setStoryMentionMessage(e.target.value)}
+                  placeholder="Thanks for mentioning us @{username}! Here is your exclusive link:"
+                  className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1 border-t border-border/40">
+              <div>
+                <span className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  💬 Story Reply Trigger
+                </span>
+                <p className="text-xs text-muted">
+                  Auto-deliver DM when someone replies or reacts to your Stories
+                </p>
+              </div>
+              <Toggle
+                on={storyReplyEnabled}
+                onToggle={() => setStoryReplyEnabled(!storyReplyEnabled)}
+              />
+            </div>
+            {storyReplyEnabled && (
+              <div className="space-y-1.5 pt-1">
+                <input
+                  value={storyReplyMessage}
+                  onChange={(e) => setStoryReplyMessage(e.target.value)}
+                  placeholder="Hey @{username}! Saw your reply to our story—here is your link:"
+                  className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                />
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm text-foreground">
               reply to their comments under the post
@@ -930,50 +1030,184 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               {"{link}"} inserts the tracked link; {"{username}"} personalizes.
             </p>
           </div>
-          <div className="mt-3 rounded-lg border border-border p-3">
+          <div className="mt-3 rounded-lg border border-border p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground">
-                a follow-up thank-you message
-              </span>
+              <div>
+                <span className="text-sm font-medium text-foreground">
+                  Proactive Drip Follow-Up Sequence
+                </span>
+                <p className="text-xs text-muted">
+                  Re-engage leads after link delivery to maximize conversions
+                </p>
+              </div>
               <Toggle
                 on={followUpEnabled}
                 onToggle={() => setFollowUpEnabled(!followUpEnabled)}
               />
             </div>
             {followUpEnabled && (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={followUpMessage}
-                  onChange={(e) => setFollowUpMessage(e.target.value)}
-                  placeholder="Btw just wanted to say thanks for following me, I appreciate the support 🙌"
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-                  maxLength={1000}
-                />
-                <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                  <span className="text-xs text-muted">Send it</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1440}
-                    value={followUpDelayMinutes}
-                    onChange={(e) =>
-                      setFollowUpDelayMinutes(
-                        Math.max(0, Math.min(1440, Math.floor(Number(e.target.value) || 0)))
-                      )
-                    }
-                    className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent/40 focus:outline-none"
-                  />
-                  <span className="text-xs text-muted">
-                    minutes after the link
-                  </span>
+              <div className="space-y-3 pt-2 border-t border-border/50">
+                {/* Trigger Condition Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    When to Follow Up
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpCondition("IF_NOT_CLICKED")}
+                      className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all ${
+                        followUpCondition === "IF_NOT_CLICKED"
+                          ? "border-accent bg-accent/10 text-foreground shadow-sm"
+                          : "border-border bg-surface text-muted hover:text-foreground"
+                      }`}
+                    >
+                      <span className="text-xs font-semibold flex items-center gap-1">
+                        🎯 If Link NOT Clicked
+                      </span>
+                      <span className="text-[11px] text-muted mt-0.5">
+                        Recovers unclicked leads
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpCondition("ALWAYS")}
+                      className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all ${
+                        followUpCondition === "ALWAYS"
+                          ? "border-accent bg-accent/10 text-foreground shadow-sm"
+                          : "border-border bg-surface text-muted hover:text-foreground"
+                      }`}
+                    >
+                      <span className="text-xs font-semibold flex items-center gap-1">
+                        ⚡ Send to Everyone
+                      </span>
+                      <span className="text-[11px] text-muted mt-0.5">
+                        General appreciation
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpCondition("IF_NOT_REPLIED")}
+                      className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all ${
+                        followUpCondition === "IF_NOT_REPLIED"
+                          ? "border-accent bg-accent/10 text-foreground shadow-sm"
+                          : "border-border bg-surface text-muted hover:text-foreground"
+                      }`}
+                    >
+                      <span className="text-xs font-semibold flex items-center gap-1">
+                        💬 If No User Reply
+                      </span>
+                      <span className="text-[11px] text-muted mt-0.5">
+                        Prompts a response
+                      </span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Follow-up Strategy / Type */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    Follow-Up Content Strategy
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpType("CUSTOM_MESSAGE")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        followUpType === "CUSTOM_MESSAGE"
+                          ? "bg-accent/15 border-accent text-foreground font-semibold"
+                          : "bg-surface border-border text-muted hover:text-foreground"
+                      }`}
+                    >
+                      ✍️ Custom Message
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpType("AI_SMART_REENGAGE")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        followUpType === "AI_SMART_REENGAGE"
+                          ? "bg-violet-900/30 border-violet-500 text-violet-200 font-semibold"
+                          : "bg-surface border-border text-muted hover:text-foreground"
+                      }`}
+                    >
+                      🤖 AI Smart Re-Engagement (Gemini)
+                    </button>
+                  </div>
+                </div>
+
+                {followUpType === "CUSTOM_MESSAGE" ? (
+                  <textarea
+                    value={followUpMessage}
+                    onChange={(e) => setFollowUpMessage(e.target.value)}
+                    placeholder="Btw just wanted to say thanks for following me, I appreciate the support 🙌"
+                    rows={3}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                    maxLength={1000}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-violet-800/40 bg-violet-950/20 p-3 text-xs text-violet-200 space-y-1">
+                    <p className="font-medium text-violet-100 flex items-center gap-1.5">
+                      ✨ Gemini AI Autonomous Re-Engagement
+                    </p>
+                    <p className="text-violet-300/80 leading-relaxed">
+                      AI analyzes the lead&apos;s previous questions, interests, and campaign offer to write an empathetic, high-converting follow-up message tailored specifically to them.
+                    </p>
+                  </div>
+                )}
+
+                {/* Timing Delay */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted">
+                    <span className="font-semibold uppercase tracking-wider">Delay Window</span>
+                    <span className="text-[11px] text-zinc-400">Instagram 24h Window Safe</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { label: "15 min", val: 15 },
+                      { label: "1 hour", val: 60 },
+                      { label: "4 hours", val: 240 },
+                      { label: "20 hours", val: 1200 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.val}
+                        type="button"
+                        onClick={() => setFollowUpDelayMinutes(preset.val)}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-all ${
+                          followUpDelayMinutes === preset.val
+                            ? "border-accent bg-accent/15 text-foreground font-semibold"
+                            : "border-border bg-surface text-muted hover:text-foreground"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <input
+                        type="number"
+                        min={0}
+                        max={1440}
+                        value={followUpDelayMinutes}
+                        onChange={(e) =>
+                          setFollowUpDelayMinutes(
+                            Math.max(0, Math.min(1440, Math.floor(Number(e.target.value) || 0)))
+                          )
+                        }
+                        className="w-16 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent/40 focus:outline-none text-center"
+                      />
+                      <span className="text-xs text-muted">min</span>
+                    </div>
+                  </div>
+                </div>
+
                 <p className="text-xs text-muted">
                   {followUpDelayMinutes > 0
-                    ? `Sent ${followUpDelayMinutes} min after they tap through.`
-                    : "Sent right after they tap through."}
-                  {" {username}"} personalizes it. Max 24 hours, to stay inside
-                  Instagram&apos;s messaging window.
+                    ? `Scheduled ${followUpDelayMinutes} minutes after initial delivery.`
+                    : "Sent right after delivery."}{" "}
+                  {followUpCondition === "IF_NOT_CLICKED"
+                    ? "Will be automatically cancelled if the user clicks the link before the timer expires."
+                    : ""}
                 </p>
               </div>
             )}
@@ -1013,6 +1247,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             followUpEnabled={followUpEnabled}
             followUpMessage={followUpMessage}
             followUpDelayMinutes={followUpDelayMinutes}
+            followUpCondition={followUpCondition}
+            followUpType={followUpType}
           />
         </div>
       </div>

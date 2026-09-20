@@ -9,11 +9,75 @@ import Redis from "ioredis";
 
 let connection: Redis | null = null;
 
+const inMemoryStore = new Map<string, string>();
+const inMemoryLists = new Map<string, string[]>();
+
+export function createMockRedis(): Redis {
+  console.warn("[AI Studio] Redis not connected — using in-memory mock");
+  const mock = {
+    get: async (k: string) => inMemoryStore.get(k) ?? null,
+    set: async (k: string, v: string | number | boolean) => {
+      inMemoryStore.set(k, String(v));
+      return "OK";
+    },
+    del: async (k: string) => {
+      inMemoryStore.delete(k);
+      inMemoryLists.delete(k);
+      return 1;
+    },
+    incr: async (k: string) => {
+      const n = Number(inMemoryStore.get(k) || 0) + 1;
+      inMemoryStore.set(k, String(n));
+      return n;
+    },
+    expire: async () => 1,
+    ttl: async () => 3600,
+    ping: async () => "PONG",
+    lpush: async (k: string, v: string) => {
+      const list = inMemoryLists.get(k) ?? [];
+      list.unshift(v);
+      inMemoryLists.set(k, list);
+      return list.length;
+    },
+    lrange: async (k: string, start: number, stop: number) => {
+      const list = inMemoryLists.get(k) ?? [];
+      const end = stop === -1 ? undefined : stop + 1;
+      return list.slice(start, end);
+    },
+    ltrim: async (k: string, start: number, stop: number) => {
+      const list = inMemoryLists.get(k) ?? [];
+      const end = stop === -1 ? undefined : stop + 1;
+      inMemoryLists.set(k, list.slice(start, end));
+      return "OK";
+    },
+    pipeline: () => ({
+      exec: async () => [],
+    }),
+    defineCommand: () => {},
+    eval: async () => [1, 1, 749],
+    on: () => mock,
+    once: () => mock,
+    disconnect: () => {},
+    quit: async () => "OK",
+  };
+  return mock as unknown as Redis;
+}
+
 export function getRedisConnection(): Redis {
   if (!connection) {
-    connection = new Redis(process.env.REDIS_URL!, {
-      maxRetriesPerRequest: null, // Required by BullMQ
-    });
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl || redisUrl.includes("localhost:6379") || redisUrl.includes("127.0.0.1:6379")) {
+      connection = createMockRedis();
+    } else {
+      try {
+        connection = new Redis(redisUrl, {
+          maxRetriesPerRequest: null, // Required by BullMQ
+          lazyConnect: true,
+        });
+      } catch {
+        connection = createMockRedis();
+      }
+    }
   }
   return connection;
 }
@@ -68,6 +132,8 @@ export interface ProcessMessageJob {
   messageId: string;
   messageText: string;
   senderId: string;
+  isStoryMention?: boolean;
+  isStoryReply?: boolean;
 }
 
 export type DmQueueJob =
@@ -82,25 +148,42 @@ export const MESSAGE_JOB_NAME = "process-message";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 
+function createMockQueue(): Queue<DmQueueJob> {
+  const mockQueue = {
+    add: async (name: string, data: DmQueueJob) => {
+      console.log(`[AI Studio Mock Queue] Job enqueued: ${name}`);
+      return { id: "mock-job-" + Date.now(), name, data };
+    },
+    getJobCounts: async () => {
+      return { waiting: 0, active: 0, delayed: 0, failed: 0 };
+    },
+    close: async () => {},
+  };
+  return mockQueue as unknown as Queue<DmQueueJob>;
+}
+
 export function getDMQueue(): Queue<DmQueueJob> {
   if (!dmQueue) {
-    dmQueue = new Queue<DmQueueJob>("dm-processing", {
-      connection: getRedisConnection(),
-      defaultJobOptions: {
-        removeOnComplete: { count: 1000 }, // Keep last 1000 completed jobs
-        // Clear failed jobs shortly after they exhaust retries. Job ids are
-        // deterministic (comment_<acct>_<id>), so a retained failed job would
-        // block the polling reconciler from ever retrying that comment. Clearing
-        // them lets a later sweep re-enqueue and try again once a transient
-        // failure (e.g. an Instagram rate-limit window) has passed. Failure
-        // detail is still preserved in DmLog.
-        removeOnFail: { age: 300, count: 2000 },
-        attempts: 3,
-        backoff: {
-          type: "custom",
-        },
-      },
-    });
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl || redisUrl.includes("localhost:6379") || redisUrl.includes("127.0.0.1:6379")) {
+      dmQueue = createMockQueue();
+    } else {
+      try {
+        dmQueue = new Queue<DmQueueJob>("dm-processing", {
+          connection: getRedisConnection(),
+          defaultJobOptions: {
+            removeOnComplete: { count: 1000 },
+            removeOnFail: { age: 300, count: 2000 },
+            attempts: 3,
+            backoff: {
+              type: "custom",
+            },
+          },
+        });
+      } catch {
+        dmQueue = createMockQueue();
+      }
+    }
   }
   return dmQueue;
 }

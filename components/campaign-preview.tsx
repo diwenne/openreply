@@ -40,6 +40,8 @@ interface CampaignPreviewProps {
   followUpEnabled: boolean;
   followUpMessage: string;
   followUpDelayMinutes?: number;
+  followUpCondition?: "ALWAYS" | "IF_NOT_CLICKED" | "IF_NOT_REPLIED";
+  followUpType?: "CUSTOM_MESSAGE" | "AI_SMART_REENGAGE";
 }
 
 const SAMPLE_USER = "username";
@@ -321,6 +323,8 @@ function DmScreen({
   followUpEnabled,
   followUpMessage,
   followUpDelayMinutes = 0,
+  followUpCondition = "ALWAYS",
+  followUpType = "CUSTOM_MESSAGE",
   linkUrl,
   inboundMessage,
 }: {
@@ -341,6 +345,8 @@ function DmScreen({
   followUpEnabled: boolean;
   followUpMessage: string;
   followUpDelayMinutes?: number;
+  followUpCondition?: "ALWAYS" | "IF_NOT_CLICKED" | "IF_NOT_REPLIED";
+  followUpType?: "CUSTOM_MESSAGE" | "AI_SMART_REENGAGE";
   // Present on the keyword-trigger thread: the DM the user sends to start it.
   inboundMessage?: string;
 }) {
@@ -442,16 +448,29 @@ function DmScreen({
         })()}
         {followUpEnabled && (
           <>
-            {followUpDelayMinutes > 0 && (
-              <p className="py-1 text-center text-[11px] text-zinc-500">
-                {followUpDelayMinutes} min later
-              </p>
-            )}
+            <div className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-zinc-400">
+              <span>{followUpDelayMinutes && followUpDelayMinutes > 0 ? `${followUpDelayMinutes}m later` : "15m later"}</span>
+              <span>•</span>
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                {followUpCondition === "IF_NOT_CLICKED"
+                  ? "if link not clicked"
+                  : followUpCondition === "IF_NOT_REPLIED"
+                  ? "if no user reply"
+                  : "always send"}
+              </span>
+              {followUpType === "AI_SMART_REENGAGE" && (
+                <span className="rounded bg-violet-900/60 text-violet-300 px-1 py-0.5 text-[9px] font-medium">
+                  AI Contextual
+                </span>
+              )}
+            </div>
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
-              <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2">
-                <p className="whitespace-pre-wrap text-sm">
-                  {followUpMessage.trim()
+              <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-zinc-800 px-3 py-2 border border-zinc-700/40">
+                <p className="whitespace-pre-wrap text-sm text-zinc-200">
+                  {followUpType === "AI_SMART_REENGAGE"
+                    ? `Hey @${SAMPLE_USER}! Hope you enjoyed the guide. Did you have any questions on automating your account?`
+                    : followUpMessage.trim()
                     ? followUpMessage.replace(/\{username\}/g, SAMPLE_USER)
                     : "Btw just wanted to say thanks for following me, I appreciate the support 🙌"}
                 </p>
@@ -527,6 +546,8 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             followUpEnabled={props.followUpEnabled}
             followUpMessage={props.followUpMessage}
             followUpDelayMinutes={props.followUpDelayMinutes}
+            followUpCondition={props.followUpCondition}
+            followUpType={props.followUpType}
             linkUrl={props.linkUrl}
           />
         )}
@@ -549,6 +570,8 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             followUpEnabled={props.followUpEnabled}
             followUpMessage={props.followUpMessage}
             followUpDelayMinutes={props.followUpDelayMinutes}
+            followUpCondition={props.followUpCondition}
+            followUpType={props.followUpType}
             linkUrl={props.linkUrl}
             inboundMessage={props.sampleComment}
           />

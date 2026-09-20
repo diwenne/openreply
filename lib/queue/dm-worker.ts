@@ -49,6 +49,15 @@ import {
   ZernioApiError,
   ZernioDeliveryUnconfirmedError,
 } from "@/lib/zernio/client";
+import {
+  getCampaignRAGContext,
+  generateContextualPublicReply,
+  answerWithRAGOrEscalate,
+} from "@/lib/ai/rag";
+import { createOrUpdateLead } from "@/lib/ai/leads";
+import { getConversationHistory, appendChatMessage } from "@/lib/ai/conversation";
+import { scheduleFollowUpJob } from "@/lib/queue/followup-store";
+import { generateAICompletion } from "@/lib/ai/gateway";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -404,29 +413,51 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           : [];
     if (
       automation.publicReplyEnabled &&
-      replyPool.length > 0 &&
+      (replyPool.length > 0 || getCampaignRAGContext(automation.id)?.aiPublicReplyEnabled) &&
       !existingLog?.publicReplySentAt &&
       !existingLog?.publicReplyDeliveryUnconfirmed
     ) {
       try {
-        const chosen = replyPool[Math.floor(Math.random() * replyPool.length)];
-        const publicReply = renderMessageWithTracking({
-          message: chosen,
-          commenterName,
-          trackedLinks: automation.trackedLinks,
-        });
-        await sendCommentReply({
-          context: accessToken,
-          commentId: commentId,
-          message: publicReply,
-          postId: mediaId,
-        });
-        await prisma.dmLog.update({
-          where: {
-            automationId_commentId: { automationId: automation.id, commentId },
-          },
-          data: { publicReplySentAt: new Date(), publicReplyError: null },
-        });
+        const ragContext = getCampaignRAGContext(automation.id) || (mediaId ? getCampaignRAGContext(mediaId) : null);
+        let publicReply = "";
+
+        if (ragContext?.aiPublicReplyEnabled) {
+          try {
+            publicReply = await generateContextualPublicReply({
+              commenterName: commenterName ?? undefined,
+              commentText,
+              postCaption: ragContext.postCaption,
+              ragContext,
+              brandTone: ragContext.brandTone,
+            });
+          } catch {
+            publicReply = "";
+          }
+        }
+
+        if (!publicReply && replyPool.length > 0) {
+          const chosen = replyPool[Math.floor(Math.random() * replyPool.length)];
+          publicReply = renderMessageWithTracking({
+            message: chosen,
+            commenterName,
+            trackedLinks: automation.trackedLinks,
+          });
+        }
+
+        if (publicReply) {
+          await sendCommentReply({
+            context: accessToken,
+            commentId: commentId,
+            message: publicReply,
+            postId: mediaId,
+          });
+          await prisma.dmLog.update({
+            where: {
+              automationId_commentId: { automationId: automation.id, commentId },
+            },
+            data: { publicReplySentAt: new Date(), publicReplyError: null },
+          });
+        }
       } catch (error) {
         console.error(
           "[DM Worker] Public comment reply failed:",
@@ -964,9 +995,22 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     // short thank-you. It is scheduled as its own delayed job so it can go out
     // some minutes later (followUpDelayMinutes) rather than immediately. The
     // deterministic job id dedupes repeat button taps to one follow-up per user.
-    if (automation.followUpEnabled && automation.followUpMessage?.trim()) {
+    if (automation.followUpEnabled && (automation.followUpMessage?.trim() || true)) {
       const delayMs =
         Math.max(0, automation.followUpDelayMinutes ?? 0) * 60_000;
+      const ragCtx = getCampaignRAGContext(automation.id);
+      scheduleFollowUpJob({
+        automationId: automation.id,
+        automationName: automation.name,
+        instagramAccountId: automation.instagramAccount.instagramId,
+        recipientId: userId,
+        recipientUsername: commenterName || `user_${userId.slice(-6)}`,
+        condition: ragCtx?.followUpCondition ?? "IF_NOT_CLICKED",
+        followUpType: ragCtx?.followUpType ?? "CUSTOM_MESSAGE",
+        customMessage: automation.followUpMessage || undefined,
+        delayMinutes: automation.followUpDelayMinutes ?? 60,
+      });
+
       await getDMQueue().add(
         FOLLOWUP_JOB_NAME,
         {
@@ -1068,11 +1112,30 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
   if (
     !automation ||
     !automation.followUpEnabled ||
-    !automation.followUpMessage?.trim() ||
     automation.instagramAccount.instagramId !== instagramAccountId ||
     !hasInstagramCredentials(automation.instagramAccount)
   ) {
     return;
+  }
+
+  // Check if link was already clicked if condition is IF_NOT_CLICKED
+  const ragCtx = getCampaignRAGContext(automation.id);
+  const condition = ragCtx?.followUpCondition ?? "IF_NOT_CLICKED";
+  if (condition === "IF_NOT_CLICKED") {
+    try {
+      const clickCount = await prisma.linkClick.count({
+        where: {
+          automationId: automation.id,
+          instagramAccountId: automation.instagramAccountId,
+        },
+      });
+      if (clickCount > 0) {
+        console.log(`[DM Worker] Skipping follow-up for ${userId}: link was clicked.`);
+        return;
+      }
+    } catch {
+      // Continue if DB check unavailable
+    }
   }
 
   let accessToken: InstagramContext;
@@ -1086,14 +1149,40 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
   }
 
   try {
+    let messageToSend = renderMessageWithoutLink({
+      message: automation.followUpMessage || "Hey @{username}, checking in to see if you got the link!",
+      commenterName: commenterName ?? null,
+    });
+
+    if (ragCtx?.followUpType === "AI_SMART_REENGAGE") {
+      try {
+        const history = getConversationHistory(commenterName || userId);
+        const historyText = history.slice(-4).map((m) => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`).join("\n");
+        const prompt = `You are a friendly growth assistant for campaign "${automation.name}".
+Context: The user received their link/offer earlier.
+Previous conversation:
+${historyText || "User received link."}
+
+Write a 1-2 sentence warm, helpful follow-up asking if they had any questions or checked out the link. Max 160 characters.`;
+        const aiRes = await generateAICompletion({ userPrompt: prompt, temperature: 0.7 });
+        if (aiRes.text?.trim()) {
+          messageToSend = aiRes.text.trim().replace(/^["']|["']$/g, "");
+        }
+      } catch {
+        // Fall back to messageToSend
+      }
+    }
+
     await sendDirectMessage({
       context: accessToken,
       instagramAccountId: automation.instagramAccount.instagramId,
       userId: userId,
-      message: renderMessageWithoutLink({
-        message: automation.followUpMessage,
-        commenterName: commenterName ?? null,
-      }),
+      message: messageToSend,
+    });
+
+    appendChatMessage(commenterName || `user_${userId.slice(-6)}`, {
+      sender: "bot",
+      text: messageToSend,
     });
   } catch (error) {
     console.log(
@@ -1112,7 +1201,7 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
  * Dedup is per inbound message id, so each message triggers at most one reply.
  */
 async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
-  const { instagramAccountId, messageId, messageText, senderId } = job.data;
+  const { instagramAccountId, messageId, messageText, senderId, isStoryMention, isStoryReply } = job.data;
 
   const automations = await prisma.automation.findMany({
     where: {
@@ -1135,15 +1224,29 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   const dedupeId = `dm:${messageId}`;
 
   for (const automation of automations) {
-    const matchResult = automation.matchAnyWord
-      ? { matched: true, matchedKeyword: null }
-      : matchKeywords(
-          messageText,
-          automation.keywords,
-          automation.wholeWordMatch
-        );
+    const ragCtx = getCampaignRAGContext(automation.id);
+    let isMatched = false;
+    let matchedKeyword: string | null = null;
 
-    if (!matchResult.matched) continue;
+    if (isStoryMention && ragCtx?.storyMentionEnabled) {
+      isMatched = true;
+      matchedKeyword = "[Story Mention]";
+    } else if (isStoryReply && ragCtx?.storyReplyEnabled) {
+      isMatched = true;
+      matchedKeyword = "[Story Reply]";
+    } else {
+      const matchResult = automation.matchAnyWord
+        ? { matched: true, matchedKeyword: null }
+        : matchKeywords(
+            messageText,
+            automation.keywords,
+            automation.wholeWordMatch
+          );
+      isMatched = matchResult.matched;
+      matchedKeyword = matchResult.matchedKeyword;
+    }
+
+    if (!isMatched) continue;
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -1171,7 +1274,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       commenterId: senderId,
       commentText: messageText,
       commentId: dedupeId,
-      matchedKeyword: matchResult.matchedKeyword,
+      matchedKeyword: matchedKeyword,
     };
 
     if (!hasInstagramCredentials(automation.instagramAccount)) {
@@ -1288,18 +1391,83 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           payload: `followcheck:${automation.id}`,
         });
       } else {
-        await sendRevealDirectMessage({
-          accessToken: accessToken,
-          automation: automation,
-          userId: senderId,
-          commenterName: commenterName,
-          context: "message trigger",
+        const ragContext = getCampaignRAGContext(automation.id);
+        let handledByEscalation = false;
+        const userHandle = commenterName || senderId;
+
+        // Fetch conversation memory for this user
+        const conversationHistory = getConversationHistory(userHandle);
+
+        // Record incoming user message
+        appendChatMessage(userHandle, {
+          sender: "user",
+          text: messageText,
         });
+
+        if (ragContext?.aiModeEnabled && (ragContext.rawText || ragContext.faqNotes)) {
+          const ragResult = await answerWithRAGOrEscalate({
+            senderName: commenterName ?? undefined,
+            incomingMessage: messageText,
+            campaignContext: ragContext,
+            fallbackDmMessage: automation.dmMessage,
+            conversationHistory,
+          });
+
+          // Record agent's response in thread
+          appendChatMessage(userHandle, {
+            sender: "bot",
+            text: ragResult.replyText,
+          });
+
+          if (ragResult.needsEscalation) {
+            handledByEscalation = true;
+            createOrUpdateLead({
+              username: userHandle,
+              lastMessage: messageText,
+              aiResponseSent: ragResult.replyText,
+              escalationReason: ragResult.reason,
+              status: "NEEDS_REPLY",
+              campaignId: automation.id,
+              campaignName: automation.name,
+              source: "DM",
+            });
+
+            await sendDirectMessage({
+              context: accessToken,
+              instagramAccountId: automation.instagramAccount.instagramId,
+              userId: senderId,
+              message: ragResult.replyText,
+            });
+          }
+        }
+
+        if (!handledByEscalation) {
+          await sendRevealDirectMessage({
+            accessToken: accessToken,
+            automation: automation,
+            userId: senderId,
+            commenterName: commenterName,
+            context: "message trigger",
+          });
+        }
 
         // The link has been delivered, so the appreciation follow-up applies
         // here exactly as it does after a button tap. Not scheduled behind the
         // follow prompt — no link went out yet in that branch.
-        if (automation.followUpEnabled && automation.followUpMessage?.trim()) {
+        if (automation.followUpEnabled && (automation.followUpMessage?.trim() || true)) {
+          const ragCtx = getCampaignRAGContext(automation.id);
+          scheduleFollowUpJob({
+            automationId: automation.id,
+            automationName: automation.name,
+            instagramAccountId: automation.instagramAccount.instagramId,
+            recipientId: senderId,
+            recipientUsername: commenterName || `user_${senderId.slice(-6)}`,
+            condition: ragCtx?.followUpCondition ?? "IF_NOT_CLICKED",
+            followUpType: ragCtx?.followUpType ?? "CUSTOM_MESSAGE",
+            customMessage: automation.followUpMessage || undefined,
+            delayMinutes: automation.followUpDelayMinutes ?? 60,
+          });
+
           await getDMQueue().add(
             FOLLOWUP_JOB_NAME,
             {

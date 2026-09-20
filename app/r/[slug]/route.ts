@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { getRequestIp, hashClickIp } from "@/lib/tracking/server";
+import { dispatchOutboundEvent } from "@/lib/crm/webhooks";
 
 type RedirectRouteProps = {
   params: Promise<{ slug: string }>;
@@ -37,6 +38,14 @@ export async function GET(request: NextRequest, { params }: RedirectRouteProps) 
       userAgent: request.headers.get("user-agent"),
       referrer: request.headers.get("referer"),
     },
+  });
+
+  void dispatchOutboundEvent("LINK_CLICKED", {
+    slug,
+    destinationUrl: trackedLink.destinationUrl,
+    workspaceId: trackedLink.workspaceId,
+    automationId: trackedLink.automationId,
+    timestamp: new Date().toISOString(),
   });
 
   return NextResponse.redirect(trackedLink.destinationUrl, { status: 302 });

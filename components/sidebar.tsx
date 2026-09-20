@@ -16,6 +16,7 @@ const navItems = [
   { label: "Overview", href: "/overview" },
   { label: "Inbox", href: "/inbox" },
   { label: "Campaigns", href: "/campaigns" },
+  { label: "AI Simulator", href: "/simulator", badge: "New" },
   { label: "DM Logs", href: "/logs" },
   { label: "Settings", href: "/settings" },
   { label: "Diagnostics", href: "/diagnostics" },
@@ -74,7 +75,7 @@ export default function Sidebar({
                 onClick={onClose}
                 aria-current={isActive ? "page" : undefined}
                 className={`
-                  block px-3 py-2.5 rounded text-sm
+                  flex items-center justify-between px-3 py-2.5 rounded text-sm
                   ${
                     isActive
                       ? "bg-surface-hover text-foreground font-medium"
@@ -82,7 +83,12 @@ export default function Sidebar({
                   }
                 `}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.badge && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-indigo-100 text-indigo-700">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
