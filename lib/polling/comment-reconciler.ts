@@ -25,6 +25,8 @@
  * filter on the account to widen results.
  */
 
+import { MAX_COMMENT_SEND_ATTEMPTS } from "@/lib/queue/comment-delivery";
+import { hasLegacyUnconfirmedDelivery } from "@/lib/instagram/delivery-errors";
 import { prisma } from "@/lib/db/client";
 import { getDMQueue } from "@/lib/queue/client";
 import {
@@ -235,18 +237,25 @@ async function sweepCampaign({
     // enough — the reply still has to land); otherwise a SENT DM is enough. This
     // is what lets a comment whose DM sent but whose public reply failed come
     // back and retry the reply.
-    const handled = await prisma.dmLog.findMany({
+    const logs = await prisma.dmLog.findMany({
       where: {
         automationId: automation.id,
         commentId: { in: needsAction.map((c) => c.id) },
-        AND: [
-          { OR: [{ status: "SENT" }, { dmDeliveryUnconfirmed: true }] },
-          ...(automation.publicReplyEnabled ? [{ OR: [{ publicReplySentAt: { not: null } }, { publicReplyDeliveryUnconfirmed: true }] }] : []),
-        ],
       },
-      select: { commentId: true },
+      select: {
+        commentId: true, status: true, attempts: true, errorMessage: true,
+        dmDeliveryUnconfirmed: true, publicReplySentAt: true,
+        publicReplyDeliveryUnconfirmed: true,
+      },
     });
-    const handledSet = new Set(handled.map((h) => h.commentId));
+    const handledSet = new Set(logs.filter((log) => {
+      const dmStopped = log.status === "SENT" || log.status === "SKIPPED_PLAN_LIMIT" ||
+        log.dmDeliveryUnconfirmed || log.attempts >= MAX_COMMENT_SEND_ATTEMPTS ||
+        (log.status === "FAILED" && hasLegacyUnconfirmedDelivery(log.errorMessage));
+      const replyStopped = !automation.publicReplyEnabled ||
+        log.publicReplySentAt || log.publicReplyDeliveryUnconfirmed;
+      return dmStopped && replyStopped;
+    }).map((log) => log.commentId));
 
     // Oldest first, so whoever commented earliest gets answered first, capped.
     const fresh = needsAction
@@ -258,8 +267,8 @@ async function sweepCampaign({
       // No deterministic jobId here: a retained completed/failed job from an
       // earlier sweep would otherwise be treated as a duplicate and silently
       // drop this add, so the comment would never be retried. Dedup is handled
-      // above (owner-reply + DmLog guards) and the worker is idempotent
-      // (publicReplySentAt / SENT), so re-processing a comment is safe.
+      // above and by the worker's atomic, durable per-leg claims. Send attempts
+      // are counted in DmLog across jobs, so a sweep cannot reset the budget.
       await queue.add("process-comment", {
         instagramAccountId: account.instagramId,
         accountConnectionId: account.id,

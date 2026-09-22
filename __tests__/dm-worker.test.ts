@@ -29,6 +29,7 @@ const {
       findFirst: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       create: vi.fn(),
     },
     instagramAccount: {
@@ -136,6 +137,7 @@ vi.mock("bullmq", () => {
   };
 });
 
+import { MetaApiError, RateLimitError } from "@/lib/meta/client";
 import { createDMWorker } from "../lib/queue/dm-worker";
 
 const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
@@ -234,7 +236,8 @@ beforeEach(() => {
       args.where?.status === "SENT" ? null : { commenterName: "commenter_user" }
   );
   mockPrisma.dmLog.upsert.mockResolvedValue({});
-  mockPrisma.dmLog.update.mockResolvedValue({});
+  mockPrisma.dmLog.update.mockReset().mockResolvedValue({});
+  mockPrisma.dmLog.updateMany.mockReset().mockResolvedValue({ count: 1 });
   mockPrisma.instagramAccount.findUnique.mockResolvedValue({
     workspaceId: "workspace_123",
   });
@@ -485,7 +488,7 @@ describe("DM Worker — Full Pipeline", () => {
   });
 
   it("should log FAILED, release usage, and re-throw when private reply sending fails", async () => {
-    const error = new Error("API Error");
+    const error = new RateLimitError("API Error");
     mockSendPrivateReply.mockRejectedValue(error);
 
     const processor = getProcessor();
@@ -815,7 +818,7 @@ describe("DM Worker — Full Pipeline", () => {
       trackedLinks: [],
     });
     mockSendDirectMessage.mockRejectedValue(
-      new Error("This message is sent outside of allowed window.")
+      new MetaApiError(10, undefined, undefined, "This message is sent outside of allowed window.")
     );
 
     const processor = getProcessor();
@@ -901,7 +904,7 @@ describe("DM Worker — one private reply per comment", () => {
       },
     ]);
     mockSendPrivateReplyWithLinkButton.mockRejectedValue(
-      new Error("The comment is invalid for a private reply")
+      new MetaApiError(100, undefined, undefined, "The comment is invalid for a private reply")
     );
 
     const processor = getProcessor();
@@ -920,7 +923,7 @@ describe("DM Worker — one private reply per comment", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: "FAILED",
-          errorMessage: "The comment is invalid for a private reply",
+          errorMessage: expect.stringContaining("The comment is invalid for a private reply"),
         }),
       })
     );
@@ -940,7 +943,7 @@ describe("DM Worker — one private reply per comment", () => {
       },
     ]);
     mockSendPrivateReplyWithLinkButton.mockRejectedValue(
-      new Error("Unsupported message template")
+      new MetaApiError(100, undefined, undefined, "Unsupported message template")
     );
 
     const processor = getProcessor();
@@ -1400,4 +1403,100 @@ describe("durable Zernio postback delivery", () => {
       vi.unstubAllGlobals();
     }
   });
+});
+
+describe("ambiguous Meta sends and durable comment claims", () => {
+  const withLinks = { ...mockAutomation, trackedLinks: [{ slug: "resource", label: null, destinationUrl: "https://example.com" }] };
+
+  it("never falls back or retries Meta code 1, even though Meta may have sent the message", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([withLinks]);
+    mockSendPrivateReplyWithLinkButton.mockRejectedValue(new MetaApiError(1, undefined, undefined, "An unknown error has occurred."));
+    await expect(getProcessor()(createMockJob())).rejects.toMatchObject({ name: "UnrecoverableError" });
+    expect(mockSendPrivateReplyWithLinkButton).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED", dmDeliveryUnconfirmed: true }) }));
+    expect(mockReleaseDMSlot).not.toHaveBeenCalled();
+    expect(mockReleaseWorkspaceDMReservation).not.toHaveBeenCalled();
+  });
+
+  it("retains the fallback's uncertain outcome instead of replacing it with the first rejection", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([withLinks]);
+    mockSendPrivateReplyWithLinkButton.mockRejectedValue(new MetaApiError(100, undefined, undefined, "Unsupported message template"));
+    mockSendPrivateReply.mockRejectedValue(new Error("Connection reset after send"));
+    await expect(getProcessor()(createMockJob())).rejects.toMatchObject({ name: "UnrecoverableError", message: expect.stringContaining("Connection reset after send") });
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ dmDeliveryUnconfirmed: true }) }));
+  });
+
+  it("blocks the historical code 1 failures before any further network send", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({ status: "FAILED", attempts: 1, errorMessage: "MetaApiError 1: An unknown error has occurred.", dmDeliveryUnconfirmed: false });
+    await getProcessor()(createMockJob());
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: { dmDeliveryUnconfirmed: true } }));
+  });
+
+  it("cannot reset the lifetime attempt limit by enqueueing a new job", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({ status: "FAILED", attempts: 3, dmDeliveryUnconfirmed: false });
+    await getProcessor()({ ...createMockJob(), id: "new-poll-job", attemptsMade: 0 });
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("allows only the claim winner to send when webhook and polling overlap", async () => {
+    let claimed = false;
+    mockPrisma.dmLog.updateMany.mockImplementation(async () => {
+      if (claimed) return { count: 0 };
+      claimed = true;
+      return { count: 1 };
+    });
+    const process = getProcessor();
+    await Promise.all([process(createMockJob()), process({ ...createMockJob(), id: "poll-job" })]);
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the pre-send claim when both success and failure log writes fail", async () => {
+    mockPrisma.dmLog.update.mockRejectedValue(new Error("Database unavailable"));
+    const process = getProcessor();
+    await expect(process(createMockJob())).rejects.toThrow("Database unavailable");
+    expect(mockPrisma.dmLog.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ dmDeliveryUnconfirmed: true }) }));
+    mockPrisma.dmLog.findUnique.mockResolvedValue({ status: "PENDING", attempts: 1, dmDeliveryUnconfirmed: true });
+    await process({ ...createMockJob(), id: "retry-after-db-recovers" });
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockReleaseWorkspaceDMReservation).not.toHaveBeenCalled();
+  });
+
+  it("does not send at all when storing the claim fails", async () => {
+    mockPrisma.dmLog.updateMany.mockRejectedValue(new Error("Database unavailable"));
+    await expect(getProcessor()(createMockJob())).rejects.toThrow("Database unavailable");
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+});
+
+it("deduplicates a redelivered Meta button tap after queue retention expires", async () => {
+  const claims = new Set<string>();
+  mockPrisma.postbackDelivery.create.mockImplementation(async ({ data }: { data: { id: string } }) => {
+    if (claims.has(data.id)) throw { code: "P2002" };
+    claims.add(data.id);
+    return data;
+  });
+  mockPrisma.automation.findFirst.mockResolvedValue(mockAutomation);
+  const data = { instagramAccountId: "ig_456", userId: "commenter_999", payload: "reveal:auto_789", mid: "same-meta-tap" };
+  const process = getProcessor();
+  await process(createMockPostbackJob(data));
+  await process({ ...createMockPostbackJob(data), id: "redelivered-after-eviction" });
+  expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+});
+
+it("retains the public reply claim if sending succeeded but its log write failed", async () => {
+  const { sendCommentReply } = await import("@/lib/meta/client");
+  vi.mocked(sendCommentReply).mockResolvedValue({ id: "public-reply" });
+  mockPrisma.automation.findMany.mockResolvedValue([{ ...mockAutomation, publicReplyEnabled: true, publicReplyMessages: ["Sent!"] }]);
+  mockPrisma.dmLog.update.mockRejectedValueOnce(new Error("Lost database connection after public send"));
+  const process = getProcessor();
+  await process(createMockJob());
+  expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ publicReplyDeliveryUnconfirmed: true }) }));
+  mockPrisma.dmLog.findUnique.mockResolvedValue({ status: "SENT", publicReplyDeliveryUnconfirmed: true });
+  await process({ ...createMockJob(), id: "next-poll" });
+  expect(sendCommentReply).toHaveBeenCalledTimes(1);
+  expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
 });
