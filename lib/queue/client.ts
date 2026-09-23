@@ -47,6 +47,10 @@ export interface ProcessPostbackJob {
   payload: string;
   mid?: string;
   fallback?: boolean;
+  // Set on the delayed second pass of a follow-gate check. Instagram does not
+  // report a brand-new follow immediately, so the first `false` is re-checked
+  // later instead of rejecting the tap outright.
+  followRecheck?: boolean;
 }
 
 // Scheduled after the link is delivered, to send the appreciation follow-up.

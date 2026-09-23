@@ -52,6 +52,18 @@ import {
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
+// How long to wait before re-checking a follow that came back false.
+//
+// `is_user_follow_business` does not reflect a brand-new follow right away, and
+// the follow gate asks people to follow and tap a button that is sitting in
+// front of them — so tapping seconds after following is the normal case, not
+// the exception. Rejecting on the first `false` therefore turns away the exact
+// people who did what was asked, and they get told to follow an account they
+// already follow.
+const FOLLOW_RECHECK_DELAY_MS = Number(
+  process.env.FOLLOW_RECHECK_DELAY_MS ?? 60_000
+);
+
 function formatError(error: unknown): string {
   if (error instanceof MetaApiError) {
     return `${error.name} ${error.code}: ${error.message}`;
@@ -886,6 +898,44 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     });
     if (follows === false) {
       if (fallback) return;
+
+      // First `false` on a button tap: give the follow time to register and
+      // look again, rather than rejecting someone who just followed. The
+      // deterministic job id means repeated taps collapse into the one pending
+      // re-check instead of queueing a re-check each.
+      if (!job.data.followRecheck) {
+        await getDMQueue().add(
+          POSTBACK_JOB_NAME,
+          { ...job.data, followRecheck: true },
+          {
+            delay: FOLLOW_RECHECK_DELAY_MS,
+            jobId: `postback_recheck_${automation.id}_${userId}`,
+          }
+        );
+        return;
+      }
+
+      // Second `false`: they are genuinely not following. Record it — this
+      // branch used to return without writing anything at all, so a gate that
+      // turned people away left no trace and its rejection rate could not be
+      // measured, only guessed at from complaints.
+      await prisma.operationalEvent
+        .create({
+          data: {
+            workspaceId: automation.workspaceId,
+            source: "WORKER",
+            level: "INFO",
+            message: "Follow gate rejected a button tap",
+            payload: {
+              automationId: automation.id,
+              automationName: automation.name,
+              userId,
+              commenterName,
+            },
+          },
+        })
+        .catch(() => {});
+
       const promptText = renderMessageWithoutLink({
         message:
           automation.followPromptMessage ||
