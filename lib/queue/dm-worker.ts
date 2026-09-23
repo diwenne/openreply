@@ -900,16 +900,22 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       if (fallback) return;
 
       // First `false` on a button tap: give the follow time to register and
-      // look again, rather than rejecting someone who just followed. The
-      // deterministic job id means repeated taps collapse into the one pending
-      // re-check instead of queueing a re-check each.
+      // look again, rather than rejecting someone who just followed.
+      //
+      // The job id is bucketed by the recheck window, not fixed per user.
+      // BullMQ keeps completed jobs (removeOnComplete: count 1000) and silently
+      // drops an add whose id is still retained, so a fixed id let a person be
+      // re-checked once and then never again — their next false tap did
+      // nothing at all, no link and no prompt. Bucketing still collapses a burst
+      // of taps into a single re-check, which is what the fixed id was for.
       if (!job.data.followRecheck) {
+        const window = Math.floor(Date.now() / FOLLOW_RECHECK_DELAY_MS);
         await getDMQueue().add(
           POSTBACK_JOB_NAME,
           { ...job.data, followRecheck: true },
           {
             delay: FOLLOW_RECHECK_DELAY_MS,
-            jobId: `postback_recheck_${automation.id}_${userId}`,
+            jobId: `postback_recheck_${automation.id}_${userId}_${window}`,
           }
         );
         return;
