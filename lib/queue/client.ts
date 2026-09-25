@@ -51,6 +51,9 @@ export interface ProcessPostbackJob {
   // report a brand-new follow immediately, so the first `false` is re-checked
   // later instead of rejecting the tap outright.
   followRecheck?: boolean;
+  // How many delayed re-checks have run, counting this one. Absent on jobs
+  // queued before re-checks were counted, where `followRecheck` meant one.
+  followRecheckAttempt?: number;
 }
 
 // Scheduled after the link is delivered, to send the appreciation follow-up.

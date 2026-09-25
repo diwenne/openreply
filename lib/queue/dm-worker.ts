@@ -52,7 +52,8 @@ import {
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
-// How long to wait before re-checking a follow that came back false.
+// How long to wait before re-checking a follow that came back false: one
+// delay per re-check, each counted from the previous check.
 //
 // `is_user_follow_business` does not reflect a brand-new follow right away, and
 // the follow gate asks people to follow and tap a button that is sitting in
@@ -60,8 +61,19 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 // the exception. Rejecting on the first `false` therefore turns away the exact
 // people who did what was asked, and they get told to follow an account they
 // already follow.
-const FOLLOW_RECHECK_DELAY_MS = Number(
-  process.env.FOLLOW_RECHECK_DELAY_MS ?? 60_000
+//
+// Two checks rather than one long wait: measured, a follow still read `false`
+// 17 s after it happened and `true` by ~68 s. An early check catches the fast
+// ones sooner; the last still covers the slow ones.
+const FOLLOW_RECHECK_DELAYS_MS = (
+  process.env.FOLLOW_RECHECK_DELAYS_MS ?? "20000,40000"
+)
+  .split(",")
+  .map(Number)
+  .filter((ms) => ms > 0);
+const FOLLOW_RECHECK_TOTAL_MS = FOLLOW_RECHECK_DELAYS_MS.reduce(
+  (total, ms) => total + ms,
+  0
 );
 
 function formatError(error: unknown): string {
@@ -625,9 +637,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commentId: commentId,
           text: openingText,
           buttonTitle: automation.openingDmButtonLabel as string,
-          payload: automation.requireFollow
-            ? `followcheck:${automation.id}`
-            : `reveal:${automation.id}`,
+          // The ":open" marker tells a tap here apart from the follow prompt's
+          // own "I'm following" button, which sends the same prefix.
+          payload: `${automation.requireFollow ? "followcheck" : "reveal"}:${automation.id}:open`,
           postId: mediaId,
         });
       } else if (sendFollowPrompt) {
@@ -800,6 +812,51 @@ async function sendPostbackOnce({
   }
 }
 
+// Tells someone whose "I'm following" tap is being re-checked that it is being
+// looked at, so the chat does not sit silent while Instagram catches up with
+// the follow. Opt-in through FOLLOW_RECHECK_ACK_MESSAGE, and best-effort: it
+// never holds up the re-check, which is already queued when this runs.
+async function sendFollowRecheckAck({
+  context,
+  instagramAccountId,
+  automationId,
+  userId,
+  operationId,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  automationId: string;
+  userId: string;
+  operationId: string | null;
+}): Promise<void> {
+  const message = process.env.FOLLOW_RECHECK_ACK_MESSAGE?.trim();
+  if (!message) return;
+  try {
+    // One acknowledgement per re-check cycle: a burst of taps collapses into a
+    // single re-check (bucketed job id) and should get a single reply too.
+    const first = await getRedisConnection().set(
+      `follow_recheck_ack:${automationId}:${userId}`,
+      "1",
+      "PX",
+      FOLLOW_RECHECK_TOTAL_MS,
+      "NX"
+    );
+    if (first !== "OK") return;
+    await sendPostbackOnce({
+      // Its own id: the tap's id is claimed later by the link or prompt that
+      // the re-check sends, and claiming it here would suppress that message.
+      operationId: operationId ? `${operationId}:ack` : null,
+      send: () =>
+        sendDirectMessage({ context, instagramAccountId, userId, message }),
+    });
+  } catch (error) {
+    console.log(
+      "[DM Worker] Failed to send follow re-check acknowledgement:",
+      formatError(error),
+    );
+  }
+}
+
 /**
  * Deliver the reveal message after a user taps an opening DM's button.
  * The postback payload is `reveal:<automationId>`; the sender is the user's
@@ -810,9 +867,12 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   const isFollowCheck = payload.startsWith("followcheck:");
   if (!isFollowCheck && !payload.startsWith("reveal:")) return;
-  const automationId = payload.slice(
-    isFollowCheck ? "followcheck:".length : "reveal:".length,
-  );
+  // The opening DM's button appends ":open" to the payload; the follow
+  // prompt's button does not. Automation ids are cuids and contain no colon.
+  const [automationId, marker] = payload
+    .slice(isFollowCheck ? "followcheck:".length : "reveal:".length)
+    .split(":");
+  const fromOpeningDm = marker === "open";
 
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true, ...connectionScope(job.data) },
@@ -899,48 +959,73 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     if (follows === false) {
       if (fallback) return;
 
-      // First `false` on a button tap: give the follow time to register and
-      // look again, rather than rejecting someone who just followed.
-      //
-      // The job id is bucketed by the recheck window, not fixed per user.
-      // BullMQ keeps completed jobs (removeOnComplete: count 1000) and silently
-      // drops an add whose id is still retained, so a fixed id let a person be
-      // re-checked once and then never again — their next false tap did
-      // nothing at all, no link and no prompt. Bucketing still collapses a burst
-      // of taps into a single re-check, which is what the fixed id was for.
-      if (!job.data.followRecheck) {
-        const window = Math.floor(Date.now() / FOLLOW_RECHECK_DELAY_MS);
-        await getDMQueue().add(
-          POSTBACK_JOB_NAME,
-          { ...job.data, followRecheck: true },
-          {
-            delay: FOLLOW_RECHECK_DELAY_MS,
-            jobId: `postback_recheck_${automation.id}_${userId}_${window}`,
-          }
-        );
-        return;
-      }
-
-      // Second `false`: they are genuinely not following. Record it — this
-      // branch used to return without writing anything at all, so a gate that
-      // turned people away left no trace and its rejection rate could not be
-      // measured, only guessed at from complaints.
-      await prisma.operationalEvent
-        .create({
-          data: {
-            workspaceId: automation.workspaceId,
-            source: "WORKER",
-            level: "INFO",
-            message: "Follow gate rejected a button tap",
-            payload: {
-              automationId: automation.id,
-              automationName: automation.name,
-              userId,
-              commenterName,
+      // A tap on an opening-DM button is not a claim to follow — most people
+      // who tap it simply don't follow yet — so they get the follow prompt
+      // right away. Only the prompt's own button earns the delayed re-check;
+      // holding an opening tap for it left people staring at a silent chat.
+      if (!fromOpeningDm) {
+        // A `false` on a button tap: give the follow time to register and look
+        // again, rather than rejecting someone who just followed.
+        //
+        // The job id is bucketed by the recheck window, not fixed per user.
+        // BullMQ keeps completed jobs (removeOnComplete: count 1000) and silently
+        // drops an add whose id is still retained, so a fixed id let a person be
+        // re-checked once and then never again — their next false tap did
+        // nothing at all, no link and no prompt. Bucketing still collapses a burst
+        // of taps into a single re-check, which is what the fixed id was for.
+        //
+        // Jobs queued before re-checks were counted carry only `followRecheck`,
+        // which meant one re-check done.
+        const rechecksDone =
+          job.data.followRecheckAttempt ?? (job.data.followRecheck ? 1 : 0);
+        if (rechecksDone < FOLLOW_RECHECK_DELAYS_MS.length) {
+          const delay = FOLLOW_RECHECK_DELAYS_MS[rechecksDone];
+          const window = Math.floor(Date.now() / delay);
+          await getDMQueue().add(
+            POSTBACK_JOB_NAME,
+            {
+              ...job.data,
+              followRecheck: true,
+              followRecheckAttempt: rechecksDone + 1,
             },
-          },
-        })
-        .catch(() => {});
+            {
+              delay,
+              jobId: `postback_recheck_${automation.id}_${userId}_${rechecksDone + 1}_${window}`,
+            }
+          );
+          if (rechecksDone === 0) {
+            await sendFollowRecheckAck({
+              context: accessToken,
+              instagramAccountId: automation.instagramAccount.instagramId,
+              automationId: automation.id,
+              userId,
+              operationId,
+            });
+          }
+          return;
+        }
+
+        // Last `false`: they are genuinely not following. Record it — this
+        // branch used to return without writing anything at all, so a gate that
+        // turned people away left no trace and its rejection rate could not be
+        // measured, only guessed at from complaints.
+        await prisma.operationalEvent
+          .create({
+            data: {
+              workspaceId: automation.workspaceId,
+              source: "WORKER",
+              level: "INFO",
+              message: "Follow gate rejected a button tap",
+              payload: {
+                automationId: automation.id,
+                automationName: automation.name,
+                userId,
+                commenterName,
+              },
+            },
+          })
+          .catch(() => {});
+      }
 
       const promptText = renderMessageWithoutLink({
         message:
