@@ -876,14 +876,19 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   // Follow-gate: before revealing the link, verify the user follows. On a
   // `followcheck:` tap a non-follower gets the prompt again (no quota spent);
   // on a read fallback a non-follower is silently skipped — the gate must not
-  // be bypassable by just reading the DM and waiting. Following, or
-  // unverifiable (null), falls through and delivers the link — fail-open so a
+  // be bypassable by just reading the DM and waiting. On a tap, following or
+  // unverifiable (null) falls through and delivers the link — fail-open so a
   // real follower is never trapped.
   if ((isFollowCheck || fallback) && automation.requireFollow) {
     const follows = await getUserFollowStatus({
       context: accessToken,
       recipientId: userId,
     });
+    // A read fallback needs a confirmed follow. Instagram only reports follow
+    // status once the person has tapped a button (before that it answers
+    // "User consent is required", i.e. null), so failing open here handed the
+    // link to anyone who read the opening DM and waited, follower or not.
+    if (fallback && follows !== true) return;
     if (follows === false) {
       if (fallback) return;
       const promptText = renderMessageWithoutLink({
