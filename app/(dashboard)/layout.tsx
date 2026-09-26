@@ -5,6 +5,7 @@ import DashboardShell from "@/components/dashboard-shell";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
+import { isTikTokConfigured } from "@/lib/env";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -39,6 +40,7 @@ export default async function DashboardLayout({
         workspaceName={workspace.name}
         instagramUsername={accounts[0]?.username ?? null}
         instagramAccountCount={accounts.length}
+        tiktokEnabled={isTikTokConfigured()}
       >
         {children}
       </DashboardShell>
