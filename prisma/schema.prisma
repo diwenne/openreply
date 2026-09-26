@@ -85,6 +85,9 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  tiktokAccounts    TikTokAccount[]
+  tiktokCampaigns   TikTokCampaign[]
+  tiktokReplyLogs   TikTokReplyLog[]
 
   @@index([ownerId])
 }
@@ -415,4 +418,99 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+/// A TikTok account connected through the TikTok API for Business (Accounts
+/// API). Optional: only used when TIKTOK_APP_ID / TIKTOK_APP_SECRET are set.
+model TikTokAccount {
+  id                    String   @id @default(cuid())
+  workspaceId           String
+  /// TikTok's app-scoped account id. Sent as `business_id` on every API call
+  /// and as `user_openid` on every webhook.
+  openId                String   @unique
+  username              String
+  displayName           String?
+  /// Both tokens are encrypted with ENCRYPTION_KEY, like Instagram tokens.
+  accessToken           String
+  tokenExpiresAt        DateTime
+  refreshToken          String
+  refreshTokenExpiresAt DateTime
+  /// Comma-separated scopes the account owner actually granted.
+  scope                 String   @default("")
+  connectedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaigns TikTokCampaign[]
+  replyLogs TikTokReplyLog[]
+
+  @@index([workspaceId])
+}
+
+/// Keyword-triggered public reply to TikTok comments. TikTok's comment-to-DM
+/// API is region-restricted, so this only posts public replies.
+model TikTokCampaign {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  tiktokAccountId String
+  name            String
+  keywords        String[]
+  matchAnyWord    Boolean  @default(false)
+  wholeWordMatch  Boolean  @default(true)
+  /// true: every video on the account. false: only `videoId`.
+  matchAnyVideo   Boolean  @default(false)
+  videoId         String?
+  videoCaption    String?
+  /// One is picked at random per reply. Each is at most 150 characters.
+  replyMessages   String[]
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tiktokAccount TikTokAccount    @relation(fields: [tiktokAccountId], references: [id], onDelete: Cascade)
+  replyLogs     TikTokReplyLog[]
+
+  @@index([workspaceId])
+  @@index([tiktokAccountId])
+}
+
+/// One row per comment the worker acted on. The unique (account, comment) row
+/// is claimed before the reply is sent, because TikTok's reply endpoint is not
+/// idempotent: a second attempt posts a second visible reply.
+model TikTokReplyLog {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  tiktokAccountId String
+  campaignId      String?
+  commentId       String
+  videoId         String
+  commentText     String
+  commenterName   String?
+  source          String?
+  status          TikTokReplyStatus @default(PENDING)
+  replyText       String?
+  /// The id of the reply we posted, so it is never mistaken for a new comment.
+  replyCommentId  String?
+  errorMessage    String?
+  repliedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tiktokAccount TikTokAccount   @relation(fields: [tiktokAccountId], references: [id], onDelete: Cascade)
+  campaign      TikTokCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@unique([tiktokAccountId, commentId])
+  @@index([workspaceId, createdAt])
+  @@index([campaignId])
+  @@index([replyCommentId])
+}
+
+enum TikTokReplyStatus {
+  PENDING
+  REPLIED
+  SKIPPED
+  FAILED
+  UNCONFIRMED
 }
