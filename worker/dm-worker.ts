@@ -2,6 +2,9 @@ import { createDMWorker } from "@/lib/queue/dm-worker";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
+import { isTikTokConfigured } from "@/lib/env";
+import { pollTikTokComments } from "@/lib/tiktok/poller";
+import { createTikTokWorker } from "@/lib/tiktok/worker";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -13,7 +16,16 @@ const POLL_INTERVAL_MS = Number(
   process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
 );
 
+// TikTok comment replies run on their own queue, and only when the TikTok app
+// credentials are set.
+const tiktokEnabled = isTikTokConfigured();
+const tiktokWorker = tiktokEnabled ? createTikTokWorker() : null;
+const TIKTOK_POLL_INTERVAL_MS = Number(
+  process.env.TIKTOK_POLL_INTERVAL_MS ?? 5 * 60_000
+);
+
 console.log("[DM Worker] Started");
+if (tiktokEnabled) console.log("[DM Worker] TikTok comment replies enabled");
 
 async function heartbeat() {
   try {
@@ -48,11 +60,26 @@ async function poll() {
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
+async function pollTikTok() {
+  try {
+    await pollTikTokComments();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[DM Worker] TikTok comment polling failed:", message);
+  }
+}
+
+if (tiktokEnabled) setTimeout(() => void pollTikTok(), 20_000);
+const tiktokPollTimer = tiktokEnabled
+  ? setInterval(() => void pollTikTok(), TIKTOK_POLL_INTERVAL_MS)
+  : null;
+
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
-  await worker.close();
+  if (tiktokPollTimer) clearInterval(tiktokPollTimer);
+  await Promise.all([worker.close(), tiktokWorker?.close()]);
   process.exit(0);
 }
 
