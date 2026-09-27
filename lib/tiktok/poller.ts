@@ -36,7 +36,11 @@ function errorText(error: unknown): string {
 /** One sweep over every TikTok account with an active campaign. */
 export async function pollTikTokComments(): Promise<void> {
   const accounts = await prisma.tikTokAccount.findMany({
-    where: { campaigns: { some: { isActive: true } } },
+    where: {
+      campaigns: { some: { isActive: true } },
+      // Revoked or past the yearly refresh limit: only a reconnect helps.
+      refreshTokenExpiresAt: { gt: new Date() },
+    },
     include: { campaigns: { where: { isActive: true } } },
   });
 
