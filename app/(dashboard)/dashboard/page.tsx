@@ -134,12 +134,16 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold text-foreground mb-6">{t("DMs — Last 7 Days")}</h2>
           <div className="flex items-end gap-1.5 h-40 sm:gap-2">
             {stats?.dailyDMs.map((day) => (
-              <div key={label(day.date)} className="min-w-0 flex-1 flex flex-col items-center gap-2">
+              <div key={label(day.date)} className="min-w-0 flex-1 h-full flex flex-col items-center gap-2">
                 <span className="text-xs text-muted font-medium">{day.count}</span>
-                <div
-                  className="w-full rounded-sm bg-accent min-h-[4px]"
-                  style={{ height: `${Math.max((day.count / maxDM) * 100, 4)}%` }}
-                />
+                {/* A percentage height needs a parent with a definite height, so
+                    the bar sits in a wrapper that fills the column's free space. */}
+                <div className="w-full min-h-0 flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-sm bg-accent min-h-[4px]"
+                    style={{ height: `${Math.max((day.count / maxDM) * 100, 4)}%` }}
+                  />
+                </div>
                 {/* Seven labels share a phone's width, so they must not wrap. */}
                 <span className="w-full truncate text-center text-[10px] text-zinc-500">
                   {label(day.date)}
