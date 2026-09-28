@@ -241,6 +241,25 @@ Unsupported request - method type: get  [code=100, type=IGApiException]
 
 The fix for your own accounts is the same two-part dance as Step 6, once per account: invite the Instagram username under App roles, Roles, Instagram testers, then accept the invite inside Instagram under Edit profile, Apps and websites, Tester invites. For accounts you do not control, you need App Review — see [META_APP_REVIEW.md](../META_APP_REVIEW.md).
 
+### Button taps fail with "not the thread owner": another DM tool still owns the conversations
+
+This one shows up when you move over from ManyChat or another comment-to-DM tool.
+
+The symptom: comments work. The public reply posts and the first DM arrives. But when the commenter taps the DM button, nothing comes back, and DM Logs shows the button tap as failed with:
+
+```
+The action is invalid since it's not the thread owner. [code=100 sub=2534037 type=IGApiException]
+```
+
+Instagram lets any connected app send the one private reply to a comment, which is why the first DM gets through. Every message after that, including the reply to a button tap, has to come from the app that owns the conversation. If another tool is still connected to the Instagram account, it can stay the owner even after you cancel or turn it off.
+
+Fix it in Meta Business Suite, under Settings, Integrations, Conversation routing:
+
+1. Select the Instagram account and open the Partner apps tab. It lists every app connected to the account's messages. Remove any old DM tool from inside that tool, for example ManyChat's Settings, Instagram, Disconnect channel. These apps often do not appear under Instagram's Apps and websites or Facebook's Business integrations, so Partner apps is the place to check.
+2. Click Manage next to your OpenReply app and switch on both Access all conversations and Take control of conversations, then save.
+
+Tap the button again on a fresh comment. The follow-up DM should now send.
+
 ### The account ID trap (informational)
 
 You do not have to do anything here; OpenReply handles it. It is worth understanding because it is invisible when it goes wrong.
