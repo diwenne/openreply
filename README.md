@@ -66,6 +66,8 @@ The web app receives the webhook and serves the dashboard. A separate worker pro
 
 Read [docs/setup.md](docs/setup.md) for the complete walkthrough, including a provider-aware AI assistant prompt. Existing accounts are never automatically migrated. Check [Zernio’s feature limits](docs/zernio.md#feature-availability) before choosing.
 
+**Moving from ManyChat or another DM tool?** Disconnect it from the Instagram account and give OpenReply control of conversations in Meta Business Suite, or button taps in DMs will fail with "not the thread owner". See [Migrating from ManyChat](docs/setup.md#migrating-from-manychat-or-another-dm-tool-give-openreply-control-of-conversations).
+
 ### Deploy the web app
 
 The button creates your web deployment. You still need to configure the database, Redis, email delivery, and a separate always-on worker.

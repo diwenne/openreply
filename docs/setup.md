@@ -241,9 +241,9 @@ Unsupported request - method type: get  [code=100, type=IGApiException]
 
 The fix for your own accounts is the same two-part dance as Step 6, once per account: invite the Instagram username under App roles, Roles, Instagram testers, then accept the invite inside Instagram under Edit profile, Apps and websites, Tester invites. For accounts you do not control, you need App Review — see [META_APP_REVIEW.md](../META_APP_REVIEW.md).
 
-### Button taps fail with "not the thread owner": another DM tool still owns the conversations
+### Migrating from ManyChat or another DM tool: give OpenReply control of conversations
 
-This one shows up when you move over from ManyChat or another comment-to-DM tool.
+Do this whenever the Instagram account was ever connected to ManyChat or another comment-to-DM tool, even if you have cancelled it. Skip it and comments look fine, but every DM button tap fails.
 
 The symptom: comments work. The public reply posts and the first DM arrives. But when the commenter taps the DM button, nothing comes back, and DM Logs shows the button tap as failed with:
 
