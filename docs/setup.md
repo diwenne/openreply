@@ -128,6 +128,13 @@ Optional, for tuning the polling reconciler (defaults are fine to start):
 | `COMMENT_POLL_MAX_PER_SWEEP` | `30` | Max new comments each campaign acts on per sweep. Keep it conservative; higher gets closer to Instagram's rate limits. |
 | `COMMENT_POLL_LOOKBACK_HOURS` | `72` | How far back a sweep considers comments. |
 
+**TikTok, optional.** Set both to turn on TikTok comment replies; leave them unset and nothing TikTok-related runs. See [docs/tiktok.md](tiktok.md), which also lists the polling variables.
+
+| Variable | What it is |
+| --- | --- |
+| `TIKTOK_APP_ID` | App ID of your TikTok API for Business developer app. |
+| `TIKTOK_APP_SECRET` | Secret of the same app. Also verifies TikTok webhook signatures. |
+
 ## Connect through Zernio
 
 After deployment, sign in as a workspace owner or admin and follow [docs/zernio.md](zernio.md). Save an unrestricted read/write API key with Inbox access, select your existing Zernio profile, then import an Instagram account or connect a new one through Zernio. OpenReply creates its webhook automatically.
