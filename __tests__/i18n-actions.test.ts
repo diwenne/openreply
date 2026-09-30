@@ -19,6 +19,13 @@ describe("language preference", () => {
     expect(t("Settings")).toBe("設定");
   });
 
+  it("renders Brazilian Portuguese from the saved cookie", async () => {
+    store.get.mockReturnValue({ value: "pt-BR" });
+    const { locale, t } = await getI18n();
+    expect(locale).toBe("pt-BR");
+    expect(t("Settings")).toBe("Configurações");
+  });
+
   it("falls back to English for an invalid cookie", async () => {
     store.get.mockReturnValue({ value: "unsupported" });
     expect((await getI18n()).locale).toBe("en");
