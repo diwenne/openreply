@@ -1,11 +1,20 @@
+import ptBRCatalog from "./pt-BR.json";
 import zhTW from "./zh-TW.json";
 
 export const LOCALE_COOKIE = "openreply-locale";
-export type Locale = "en" | "zh-TW";
+export type Locale = "en" | "zh-TW" | "pt-BR";
 export type MessageKey = keyof typeof zhTW;
 
+// Every catalog must translate exactly the same English keys. `satisfies` makes
+// a missing key a compile error instead of an `undefined` at render time.
+const ptBR = ptBRCatalog satisfies Record<MessageKey, string>;
+const catalogs: Record<Exclude<Locale, "en">, Record<MessageKey, string>> = {
+  "zh-TW": zhTW,
+  "pt-BR": ptBR,
+};
+
 export function isLocale(value: unknown): value is Locale {
-  return value === "en" || value === "zh-TW";
+  return value === "en" || value === "zh-TW" || value === "pt-BR";
 }
 
 export function resolveLocale(value: unknown): Locale {
@@ -53,7 +62,7 @@ const labels: Record<string, StaticMessageKey> = {
 
 export function createI18n(locale: Locale) {
   function t<K extends MessageKey>(key: K, ...args: MessageArgs<K>): string {
-    const message = locale === "zh-TW" ? zhTW[key] : key;
+    const message = locale === "en" ? key : catalogs[locale][key];
     const values = args[0] as Record<string, string | number> | undefined;
     return message.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
       values?.[name] === undefined ? placeholder : String(values[name]),

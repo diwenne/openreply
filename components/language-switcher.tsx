@@ -36,6 +36,9 @@ export default function LanguageSwitcher() {
           <option value="zh-TW" lang="zh-TW">
             繁體中文
           </option>
+          <option value="pt-BR" lang="pt-BR">
+            Português (Brasil)
+          </option>
         </select>
       </label>
       {failed && (
