@@ -301,6 +301,9 @@ model LinkClick {
   instagramAccountId String
   trackedLinkId      String
   ipHash             String?
+  // Token from the link's `?r=` (hashRecipientId), set on links sent in a DM.
+  // Clicks are counted once per recipient, falling back to ipHash without it.
+  recipientHash      String?
   userAgent          String?
   referrer           String?
   createdAt          DateTime @default(now())
