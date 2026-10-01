@@ -10,6 +10,21 @@ export interface KeywordCountRow {
   _count: number | { matchedKeyword?: number; _all?: number };
 }
 
+export interface ClickRow {
+  id: string;
+  automationId: string;
+  recipientHash: string | null;
+  ipHash: string | null;
+}
+
+/** The LinkClick fields the unique-click helpers need, for a Prisma `select`. */
+export const CLICK_ROW_SELECT = {
+  id: true,
+  automationId: true,
+  recipientHash: true,
+  ipHash: true,
+} as const;
+
 function getCount(value: StatusCountRow["_count"] | KeywordCountRow["_count"]) {
   if (typeof value === "number") return value;
   if ("status" in value && typeof value.status === "number") {
@@ -23,9 +38,43 @@ function getCount(value: StatusCountRow["_count"] | KeywordCountRow["_count"]) {
 
 export function calculateCtr(clicks: number, sent: number) {
   if (sent <= 0) return 0;
-  // Raw clicks can exceed sends (repeat clicks, link-preview bots hitting the
-  // tracked URL), which makes a "rate" over 100% — cap it so CTR stays sane.
+  // Clicks are unique per recipient, but IP-counted clicks (older links, links
+  // opened from a public reply or forwarded) can still exceed sends — cap it so
+  // CTR stays sane.
   return Math.min(100, Number(((clicks / sent) * 100).toFixed(1)));
+}
+
+// Who a click belongs to, so each person counts once per campaign: the
+// recipient token when the link carried one, else the IP hash, else the click
+// itself.
+function clickVisitorKey(row: ClickRow) {
+  const visitor = row.recipientHash
+    ? `r:${row.recipientHash}`
+    : row.ipHash
+      ? `ip:${row.ipHash}`
+      : `click:${row.id}`;
+  return `${row.automationId}:${visitor}`;
+}
+
+export function countUniqueClicks(rows: ClickRow[]) {
+  return new Set(rows.map(clickVisitorKey)).size;
+}
+
+/** Unique clicks per group, e.g. per campaign or per tracked link. */
+export function countUniqueClicksBy<T extends ClickRow>(
+  rows: T[],
+  groupOf: (row: T) => string
+) {
+  const visitorsByGroup = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const group = groupOf(row);
+    const visitors = visitorsByGroup.get(group) ?? new Set<string>();
+    visitors.add(clickVisitorKey(row));
+    visitorsByGroup.set(group, visitors);
+  }
+  return new Map(
+    [...visitorsByGroup].map(([group, visitors]) => [group, visitors.size])
+  );
 }
 
 export function summarizeDmStatuses(rows: StatusCountRow[]) {

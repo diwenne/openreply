@@ -140,6 +140,7 @@ vi.mock("bullmq", () => {
 import { MetaApiError, RateLimitError } from "@/lib/meta/client";
 import { createDMWorker } from "../lib/queue/dm-worker";
 import { getRedisConnection } from "@/lib/queue/client";
+import { hashRecipientId } from "@/lib/tracking/server";
 
 const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
 
@@ -584,15 +585,17 @@ describe("DM Worker — Full Pipeline", () => {
     await processor(createMockJob());
 
     // Primary button title comes from linkButtonLabel; the second from its
-    // own stored label. Both point at their tracked /r/<slug> URLs.
+    // own stored label. Both point at their tracked /r/<slug> URLs, tagged
+    // with the commenter's recipient token.
+    const token = hashRecipientId(mockJobData.commenterId);
     expect(mockSendPrivateReplyWithLinkButton).toHaveBeenCalledWith(
       "decrypted_token",
       "ig_456",
       "comment_555",
       "Hey commenter_user! Here is the offer:",
       [
-        { title: "Get offer", url: "http://localhost:3000/r/abc123" },
-        { title: "Book a call", url: "http://localhost:3000/r/def456" },
+        { title: "Get offer", url: `http://localhost:3000/r/abc123?r=${token}` },
+        { title: "Book a call", url: `http://localhost:3000/r/def456?r=${token}` },
       ]
     );
   });
@@ -662,7 +665,12 @@ describe("DM Worker — Full Pipeline", () => {
       "ig_456",
       "comment_555",
       "Hey commenter_user! Here is the offer:",
-      [{ title: "Get offer", url: "http://localhost:3000/r/abc123" }]
+      [
+        {
+          title: "Get offer",
+          url: `http://localhost:3000/r/abc123?r=${hashRecipientId(mockJobData.commenterId)}`,
+        },
+      ]
     );
   });
 
