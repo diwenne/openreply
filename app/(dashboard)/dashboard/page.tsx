@@ -124,7 +124,7 @@ export default function DashboardPage() {
         <StatCard label={t("Skipped")} value={stats?.dmsSkippedMonth ?? 0} />
         <StatCard label={t("Failed")} value={stats?.dmsFailedMonth ?? 0} />
         <StatCard label={t("Clicks")} value={stats?.clicksThisMonth ?? 0} />
-        <StatCard label={t("CTR")} value={`${stats?.ctrThisMonth ?? 0}%`} />
+        <StatCard label={t("Clicks / 100 sends")} value={`${stats?.ctrThisMonth ?? 0}`} />
       </div>
 
       {/* Chart + Recent Activity */}

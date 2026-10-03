@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
+import CampaignHistory from "@/components/campaign-history";
+import { campaignLifecycle } from "@/lib/campaigns/selection";
 
 interface Campaign {
   id: string;
@@ -39,6 +41,7 @@ interface Campaign {
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
+  lifecycle?: string;
   instagramAccountId: string;
   instagramAccount: { username: string };
   trackedLinks?: {
@@ -55,7 +58,7 @@ interface Campaign {
   };
 }
 
-type Tab = "insights" | "preview";
+type Tab = "insights" | "preview" | "history";
 
 export default function CampaignDetailPage() {
   const { t } = useI18n();
@@ -70,6 +73,7 @@ export default function CampaignDetailPage() {
   const [tab, setTab] = useState<Tab>("insights");
   const [previewTab, setPreviewTab] = useState<PreviewTab>("dm");
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/automations", { cache: "no-store" })
@@ -115,13 +119,18 @@ export default function CampaignDetailPage() {
   async function toggleActive() {
     if (!campaign) return;
     setBusy(true);
+    setActionError(null);
     try {
-      await fetch(`/api/automations?id=${campaign.id}`, {
+      const response = await fetch(`/api/automations?id=${campaign.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !campaign.isActive }),
       });
-      setCampaign({ ...campaign, isActive: !campaign.isActive });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "Campaign could not be updated");
+      setCampaign({ ...campaign, ...result.data });
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Campaign could not be updated");
     } finally {
       setBusy(false);
     }
@@ -165,7 +174,7 @@ export default function CampaignDetailPage() {
   const metrics = [
     { label: t("Sends"), value: campaign.analytics.sent },
     { label: t("Clicks"), value: campaign.analytics.clicks },
-    { label: t("CTR"), value: `${campaign.analytics.ctr}%` },
+    { label: t("Clicks / 100 sends"), value: String(campaign.analytics.ctr) },
     { label: t("Failed"), value: campaign.analytics.failed },
   ];
 
@@ -190,7 +199,7 @@ export default function CampaignDetailPage() {
                 : "bg-zinc-500/10 text-muted"
             }`}
           >
-            {campaign.isActive ? t("LIVE") : t("Paused")}
+            {campaignLifecycle(campaign)}
           </span>
         </div>
 
@@ -303,6 +312,7 @@ export default function CampaignDetailPage() {
             <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
               {t("Preview")}
             </TabButton>
+            <TabButton active={tab === "history"} onClick={() => setTab("history")}>{t("History")}</TabButton>
           </div>
           <div className="flex items-center gap-2">
             <Link
@@ -320,10 +330,13 @@ export default function CampaignDetailPage() {
                   : "border-success/30 text-success hover:bg-success/10"
               }`}
             >
-              {campaign.isActive ? t("Stop") : t("Resume")}
+              {campaign.isActive ? t("Stop") : campaignLifecycle(campaign) === "PAUSED" ? t("Resume") : t("Go Live")}
             </button>
           </div>
         </div>
+
+        {actionError && <p role="alert" className="rounded border border-error/30 bg-error/10 p-3 text-sm text-error">{actionError}</p>}
+        {tab === "history" && <CampaignHistory campaignId={campaign.id} />}
 
         {tab === "insights" && (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

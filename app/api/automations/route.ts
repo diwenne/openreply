@@ -5,6 +5,9 @@ import { prisma } from "@/lib/db/client";
 import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
 import { buildTrackedUrl } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
+import { CAMPAIGN_LIFECYCLES, campaignActivationErrors } from "@/lib/campaigns/selection";
+import { CampaignMutationError, assertNextReelAvailable, resolveLifecycle, saveCampaignRevision } from "@/lib/campaigns/mutations";
+import { httpUrl } from "@/lib/library/schema";
 import {
   buildInitialCampaignLinks,
   syncCampaignLinks,
@@ -25,13 +28,13 @@ const createAutomationSchema = z
     goal: z.string().min(1).max(120).optional().nullable(),
     instagramAccountId: z.string().min(1).optional().nullable(),
     postId: z.string().min(1).optional().nullable(),
-    postUrl: z.string().url().optional().nullable(),
+    postUrl: httpUrl.optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
     dmTriggerEnabled: z.boolean().optional().default(false),
-    dmMessage: z.string().min(1).max(1000),
+    dmMessage: z.string().max(1000).optional().default(""),
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -53,48 +56,37 @@ const createAutomationSchema = z
       .default([]),
     // Empty string means "no tracked link"; a URL sets one.
     trackedDestinationUrl: z
-      .union([z.string().url(), z.literal("")])
+      .union([httpUrl, z.literal("")])
       .optional()
       .nullable(),
     // Optional second tracked link, rendered as a second DM button.
     secondaryDestinationUrl: z
-      .union([z.string().url(), z.literal("")])
+      .union([httpUrl, z.literal("")])
       .optional()
       .nullable(),
     secondaryButtonLabel: z.string().max(20).optional().nullable(),
     isActive: z.boolean().optional().default(true),
+    lifecycle: z.enum(CAMPAIGN_LIFECYCLES).optional(),
+    priority: z.number().int().min(-1000).max(1000).optional().default(0),
+    excludedKeywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     wholeWordMatch: z.boolean().optional().default(true),
   })
-  // A campaign must target a specific post, any post, or the next reel.
-  .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
-    { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
-  )
-  // And it must match either specific words or any word.
-  .refine((d) => d.matchAnyWord || d.keywords.length >= 1, {
-    message: "Add at least one keyword, or match any word",
-    path: ["keywords"],
-  })
-  // An opening DM needs both a message and a button label.
-  .refine(
-    (d) =>
-      !d.openingDmEnabled ||
-      (Boolean(d.openingDmMessage?.trim()) &&
-        Boolean(d.openingDmButtonLabel?.trim())),
-    { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
-  );
+  .superRefine((d, ctx) => {
+    if (resolveLifecycle(d) !== "ACTIVE") return;
+    for (const message of campaignActivationErrors(d)) ctx.addIssue({ code: "custom", message, path: ["campaign"] });
+  });
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
   postId: z.string().min(1).optional().nullable(),
-  postUrl: z.string().url().optional().nullable(),
+  postUrl: httpUrl.optional().nullable(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   matchAnyWord: z.boolean().optional(),
   dmTriggerEnabled: z.boolean().optional(),
-  dmMessage: z.string().min(1).max(1000).optional(),
+  dmMessage: z.string().max(1000).optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -109,17 +101,20 @@ const updateAutomationSchema = z.object({
   publicReplyMessage: z.string().max(1000).optional().nullable(),
   publicReplyMessages: z.array(z.string().max(1000)).max(10).optional(),
   isActive: z.boolean().optional(),
+  lifecycle: z.enum(CAMPAIGN_LIFECYCLES).optional(),
+  priority: z.number().int().min(-1000).max(1000).optional(),
+  excludedKeywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   wholeWordMatch: z.boolean().optional(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
   trackedDestinationUrl: z
-    .union([z.string().url(), z.literal("")])
+    .union([httpUrl, z.literal("")])
     .optional()
     .nullable(),
   // Same semantics for the optional second tracked link / DM button.
   secondaryDestinationUrl: z
-    .union([z.string().url(), z.literal("")])
+    .union([httpUrl, z.literal("")])
     .optional()
     .nullable(),
   secondaryButtonLabel: z.string().max(20).optional().nullable(),
@@ -366,7 +361,11 @@ export async function POST(request: NextRequest) {
     .map((m) => m.trim())
     .filter(Boolean);
 
-  const automation = await prisma.automation.create({
+  const lifecycle = resolveLifecycle(parsed.data);
+  try {
+  const automation = await prisma.$transaction(async (tx) => {
+  await assertNextReelAvailable(tx, instagramAccount.id, lifecycle === "ACTIVE" && pendingNextReel);
+  const created = await tx.automation.create({
     data: {
       name: parsed.data.name,
       goal: parsed.data.goal,
@@ -408,7 +407,11 @@ export async function POST(request: NextRequest) {
       publicReplyMessage: parsed.data.publicReplyEnabled
         ? publicReplyList[0] ?? parsed.data.publicReplyMessage ?? null
         : null,
-      isActive: parsed.data.isActive,
+      isActive: lifecycle === "ACTIVE",
+      lifecycle,
+      priority: parsed.data.priority,
+      excludedKeywords: parsed.data.excludedKeywords,
+      armedAt: lifecycle === "ACTIVE" && pendingNextReel ? new Date() : null,
       wholeWordMatch: parsed.data.wholeWordMatch,
       workspaceId,
       instagramAccountId: instagramAccount.id,
@@ -421,11 +424,18 @@ export async function POST(request: NextRequest) {
       trackedLinks: true,
     },
   });
+  await saveCampaignRevision(tx, created, context.userId);
+  return created;
+  });
 
   return NextResponse.json(
     { success: true, data: automation },
     { status: 201 }
   );
+  } catch (error) {
+    if (error instanceof CampaignMutationError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    throw error;
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -522,10 +532,25 @@ export async function PATCH(request: NextRequest) {
   // One transaction, so a save never lands half applied. Updating the campaign
   // first locks its row, which makes a second save of the same campaign wait
   // for this one before it reads the links.
+  try {
   const updated = await prisma.$transaction(async (tx) => {
+    // Lock the account before re-reading the campaign: concurrent activation
+    // and edits cannot bypass the one-armed-reel rule or validate stale data.
+    await assertNextReelAvailable(tx, existing.instagramAccountId, false);
+    const current = await tx.automation.findFirst({ where: { id: automationId, workspaceId } });
+    if (!current) throw new CampaignMutationError("Campaign not found", 404);
+    const lifecycle = resolveLifecycle(automationData, current);
+    const final = { ...current, ...automationData, lifecycle, isActive: lifecycle === "ACTIVE" };
+    if (lifecycle === "ACTIVE") {
+      const errors = campaignActivationErrors(final);
+      if (errors.length) throw new CampaignMutationError(errors.join(" "), 400);
+    }
+    await assertNextReelAvailable(tx, current.instagramAccountId, final.isActive && final.pendingNextReel, current.id);
+    const armedAt = final.isActive && final.pendingNextReel
+      ? (current.isActive && current.lifecycle === "ACTIVE" && current.pendingNextReel ? current.armedAt ?? new Date() : new Date()) : null;
     const campaign = await tx.automation.update({
       where: { id: automationId },
-      data: automationData,
+      data: { ...automationData, lifecycle, isActive: final.isActive, armedAt, version: { increment: 1 } },
     });
 
     await syncCampaignLinks(tx, {
@@ -536,10 +561,15 @@ export async function PATCH(request: NextRequest) {
       secondaryLabel: secondaryButtonLabel,
     });
 
+    await saveCampaignRevision(tx, campaign, context.userId);
     return campaign;
   });
 
   return NextResponse.json({ success: true, data: updated });
+  } catch (error) {
+    if (error instanceof CampaignMutationError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    throw error;
+  }
 }
 
 export async function DELETE(request: NextRequest) {

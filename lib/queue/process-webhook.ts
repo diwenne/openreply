@@ -80,6 +80,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           userId: event.userId,
           payload: event.payload,
           mid: event.mid,
+          ...(event.interactionAt ? { interactionAt: event.interactionAt } : {}),
         },
         {
           // BullMQ forbids ":" in custom job ids, and the payload is
@@ -108,6 +109,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           messageId: event.messageId,
           messageText: event.messageText,
           senderId: event.senderId,
+          ...(event.interactionAt ? { interactionAt: event.interactionAt } : {}),
         },
         {
           // Message ids can contain characters BullMQ rejects in a job id (":"
