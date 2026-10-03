@@ -33,7 +33,7 @@ In Claude, use **No authentication** plus this custom request header **only if
 your client offers request headers**. Clients requiring OAuth are not supported.
 Never switch to public access to work around a client limitation.
 
-Tools (all read-only; scope `campaigns:read`):
+Read-only tools (scope `campaigns:read`):
 
 - `list_campaigns`: up to 100 compact campaign summaries, newest first.
 - `get_campaign` with `{ "id": "..." }`: settings, ordered `trackedLinks`, and
@@ -43,8 +43,10 @@ Tools (all read-only; scope `campaigns:read`):
   link requests. These are **not** unique recipients or CRM conversions.
 
 Example safe verification: ask your client to list campaigns, then read one
-campaign's destination URLs without changing anything. There are no mutation,
-activation, publish, account-token or messaging tools in this contribution.
+campaign's destination URLs without changing anything. A read-only key exposes
+only these three tools. The optional [draft and event extension](integration-writes.md)
+adds explicitly scoped draft creation and validation; it never adds activation,
+publish, account-token or messaging tools.
 
 ## REST
 

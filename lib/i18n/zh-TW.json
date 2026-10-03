@@ -545,5 +545,11 @@
   "Last updated": "最後更新",
   "Saved message template": "已儲存的訊息範本",
   "Saved message content": "已儲存的訊息內容",
-  "No delivery stages recorded yet.": "尚未記錄傳送階段。"
+  "No delivery stages recorded yet.": "尚未記錄傳送階段。",
+  "Create a workspace key for {days} days with permissions: {scopes}? Anyone with this key receives these permissions.": "建立有效期為 {days} 天且具有以下權限的工作區金鑰：{scopes}？持有此金鑰的人都能使用這些權限。",
+  "Workspace-scoped service keys. Draft tools never publish or send messages. Only admins and owners can manage keys.": "服務金鑰僅能存取所屬工作區。草稿工具不會發布或傳送訊息。只有管理員與擁有者能管理金鑰。",
+  "Permissions": "權限",
+  "Reported conversions": "已回報的轉換事件",
+  "Externally reported events only. Link clicks do not prove downloads or qualified inquiries.": "僅顯示外部回報的事件。連結點擊不代表下載或有效詢問。",
+  "No conversion events reported yet.": "尚未回報任何轉換事件。"
 }

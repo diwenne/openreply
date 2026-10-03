@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       const params = z.object({ protocolVersion: z.string(), capabilities: z.object({}).passthrough(), clientInfo: z.object({ name: z.string(), version: z.string() }).passthrough() }).safeParse(rpc.params);
       if (!params.success) return Response.json({ jsonrpc: "2.0", id: rpc.id, error: { code: -32602, message: "Invalid initialize parameters" } });
       result = { protocolVersion: versions.includes(params.data.protocolVersion) ? params.data.protocolVersion : versions.at(-1),
-        capabilities: { tools: { listChanged: false } }, serverInfo: { name: "openreply", version: "1.0.0" }, instructions: "Read-only and workspace-scoped. No tool can modify campaigns or send messages." };
+        capabilities: { tools: { listChanged: false } }, serverInfo: { name: "openreply", version: "1.1.0" }, instructions: "Workspace-scoped. Drafts never send until manually reviewed and published. No tool can activate campaigns or send messages." };
     } else if (rpc.method === "ping") result = {};
     else if (rpc.method === "tools/list") result = { tools: listTools(context) };
     else if (rpc.method === "tools/call") {

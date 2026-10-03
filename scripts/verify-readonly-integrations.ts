@@ -47,7 +47,7 @@ try {
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 200);
   assert.equal((await fetch(`${base}/api/v1/campaigns`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/campaigns?id=not-this-workspace`, { headers })).status, 404);
-  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 405);
+  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 403);
   assert.equal((await rpc("tools/call", { name: "create_draft", arguments: {} })).isError, true);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers: { ...headers, origin: "https://evil.test" }, body: "{}" })).status, 403);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers, body: JSON.stringify({ padding: "x".repeat(65536) }) })).status, 413);

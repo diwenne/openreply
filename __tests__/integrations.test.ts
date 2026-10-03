@@ -95,7 +95,7 @@ describe("key management", () => {
     expect((await revokeKey(new Request("https://example.test/api/integrations/keys?id=key"))).status).toBe(403);
   });
   it("rejects write scopes and foreign Origins", async () => {
-    expect((await createKey(request({ name: "Reader", scopes: ["drafts:write"] }))).status).toBe(400);
+    expect((await createKey(request({ name: "Reader", scopes: ["campaigns:publish"] }))).status).toBe(400);
     expect((await createKey(request({}, { origin: "https://evil.test" }))).status).toBe(403);
     expect(state.keys.create).not.toHaveBeenCalled();
   });
@@ -112,11 +112,17 @@ describe("key management", () => {
 });
 
 describe("read-only MCP and REST", () => {
+  it("retains strict read arguments and deterministic list ordering", async () => {
+    await expect(callTool(context, "list_campaigns", { unexpected: true })).rejects.toMatchObject({ status: 400 });
+    await expect(callTool(context, "get_campaign", { id: "campaign", unexpected: true })).rejects.toMatchObject({ status: 400 });
+    await callTool(context, "list_campaigns", {});
+    expect(state.campaigns.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ createdAt: "desc" }, { id: "asc" }] }));
+  });
   it("advertises only scoped read-only tools", async () => {
     expect(listTools({ ...context, scopes: [] })).toEqual([]);
     expect(listTools(context).map(tool => tool.name)).toEqual(["list_campaigns", "get_campaign", "get_campaign_stats"]);
     expect(listTools(context).every(tool => tool.annotations.readOnlyHint)).toBe(true);
-    await expect(callTool(context, "create_draft", {})).rejects.toMatchObject({ status: 404 });
+    await expect(callTool(context, "create_draft", {})).rejects.toMatchObject({ status: 403 });
     await expect(callTool({ ...context, scopes: [] }, "get_campaign", { id: "test" })).rejects.toMatchObject({ status: 403 });
   });
   it("negotiates MCP, handles notifications and rejects unsupported methods", async () => {

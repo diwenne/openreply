@@ -90,6 +90,7 @@ model Workspace {
   revisions         CampaignRevision[]
   libraryDraftRequests LibraryDraftRequest[]
   serviceKeys       ServiceKey[]
+  integrationEvents IntegrationEvent[]
 
   @@index([ownerId])
 }
@@ -106,6 +107,20 @@ model WorkspaceMember {
 
   @@unique([workspaceId, userId])
   @@index([userId])
+}
+
+model IntegrationEvent {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  automationId String?
+  eventType    String
+  externalId   String?
+  payload      Json
+  createdAt    DateTime @default(now())
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, externalId])
+  @@index([workspaceId, createdAt])
 }
 
 model ServiceKey {

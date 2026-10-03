@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({ workspace: vi.fn(), prisma: {
   automation: { findFirst: vi.fn() }, deliveryEvent: { findMany: vi.fn() },
   campaignRevision: { findMany: vi.fn() },
+  integrationEvent: { groupBy: vi.fn() },
 } }));
 vi.mock("@/lib/auth", () => ({ getCurrentWorkspaceId: mocks.workspace }));
 vi.mock("@/lib/db/client", () => ({ prisma: mocks.prisma }));
@@ -14,6 +15,7 @@ beforeEach(() => {
   mocks.prisma.automation.findFirst.mockResolvedValue({ id: "campaign", lifecycle: "ACTIVE", version: 3 });
   mocks.prisma.deliveryEvent.findMany.mockResolvedValue([]);
   mocks.prisma.campaignRevision.findMany.mockResolvedValue([]);
+  mocks.prisma.integrationEvent.groupBy.mockResolvedValue([]);
 });
 describe("private delivery timeline", () => {
   it("requires authentication before querying campaign or delivery state", async () => {
@@ -43,8 +45,17 @@ describe("private delivery timeline", () => {
     expect(mocks.prisma.deliveryEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: "workspace", automationId: "campaign" }, select: deliveryHistorySelect, take: 100 }));
     for (const secret of ["private-value", "private-recipient", "private-token", "private-operation"]) expect(JSON.stringify(body)).not.toContain(secret);
     expect(body.data.delivery[0].error).toContain("[redacted]");
-    expect(body.data).not.toHaveProperty("conversions");
+    expect(body.data.conversions).toEqual([]);
   });
+  it("returns only workspace-scoped conversion totals, never subject references or payloads", async () => {
+    mocks.prisma.integrationEvent.groupBy.mockResolvedValue([{ eventType: "conversion.form_completed", _count: { _all: 2 }, payload: { subjectRef: "private-reference" } }]);
+    const body = await (await GET(request())).json();
+    expect(body.data.conversions).toEqual([{ eventType: "conversion.form_completed", count: 2 }]);
+    expect(mocks.prisma.integrationEvent.groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: "workspace", automationId: "campaign",
+      eventType: { in: ["conversion.resource_downloaded", "conversion.form_completed", "conversion.qualified_inquiry"] } } }));
+    expect(JSON.stringify(body)).not.toContain("private-reference");
+  });
+
   it("does not copy any unlisted recipient, provider or queue fields", () => {
     expect(safeDeliveryHistory({ id: "event", recipientId: "private", payload: { token: "private" }, operationKey: "private", error: "Bearer credential" })).not.toHaveProperty("recipientId");
     expect(JSON.stringify(safeDeliveryHistory({ error: "Bearer credential", payload: "private" }))).not.toContain("credential");
