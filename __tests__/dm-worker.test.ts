@@ -18,6 +18,8 @@ const {
   mockReleaseWorkspaceDMReservation,
 } = vi.hoisted(() => ({
   mockPrisma: {
+    $transaction: vi.fn(),
+    deliveryEvent: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     zernioConnection: { findUnique: vi.fn() },
     postbackDelivery: { create: vi.fn(), delete: vi.fn() },
     automation: {
@@ -25,6 +27,7 @@ const {
       findFirst: vi.fn(),
     },
     dmLog: {
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       upsert: vi.fn(),
@@ -145,6 +148,8 @@ const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
 
 const mockAutomation = {
   id: "auto_789",
+  createdAt: new Date("2026-05-01"),
+  version: 1,
   workspaceId: "workspace_123",
   instagramAccountId: "ig_account_row_1",
   postId: "media_101",
@@ -221,6 +226,10 @@ function createMockPostbackJob(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => unknown) => fn(mockPrisma));
+  mockPrisma.dmLog.findMany.mockResolvedValue([]);
+  mockPrisma.deliveryEvent.upsert.mockReset().mockImplementation(async (args: { create: Record<string, unknown> }) => ({ id: "event_1", ...args.create }));
+  mockPrisma.deliveryEvent.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.postbackDelivery.create.mockReset().mockResolvedValue({});
   mockPrisma.postbackDelivery.delete.mockReset().mockResolvedValue({});
 
@@ -234,7 +243,7 @@ beforeEach(() => {
   // duplicate of an already-answered one.
   mockPrisma.dmLog.findFirst.mockImplementation(
     async (args: { where?: { status?: string } } = {}) =>
-      args.where?.status === "SENT" ? null : { commenterName: "commenter_user" }
+      args.where?.status === "SENT" || args.where && "OR" in args.where ? null : { commenterName: "commenter_user" }
   );
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockReset().mockResolvedValue({});
@@ -244,7 +253,7 @@ beforeEach(() => {
   });
   mockPrisma.operationalEvent.create.mockResolvedValue({});
   mockDecryptToken.mockReturnValue("decrypted_token");
-  mockMatchKeywords.mockReturnValue({ matched: true, matchedKeyword: "LINK" });
+  mockMatchKeywords.mockReset().mockImplementation((_text: string, keywords: string[]) => ({ matched: keywords.length > 0, matchedKeyword: keywords.length ? "LINK" : null }));
   mockReserveWorkspaceDMSend.mockResolvedValue({
     allowed: true,
     reserved: true,
@@ -896,7 +905,7 @@ describe("DM Worker — one private reply per comment", () => {
   it("should skip a campaign when another already used the comment's private reply", async () => {
     mockPrisma.dmLog.findFirst.mockImplementation(
       async (args: { where?: { status?: string } } = {}) =>
-        args.where?.status === "SENT"
+        args.where?.status === "SENT" || args.where && "OR" in args.where
           ? { automation: { name: "openreply 1" } }
           : { commenterName: "commenter_user" }
     );
@@ -1010,6 +1019,13 @@ describe("DM Worker — DM keyword trigger", () => {
 
   beforeEach(() => {
     mockPrisma.automation.findMany.mockResolvedValue([dmTriggerAutomation]);
+  });
+
+  it("releases quota when persisting the pre-send log fails", async () => {
+    mockPrisma.dmLog.upsert.mockRejectedValueOnce(new Error("Pre-send database failure"));
+    await expect(getProcessor()(createMockMessageJob())).rejects.toThrow("Pre-send database failure");
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith("workspace_123", usagePeriodStart);
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
   });
 
   it("should reply to a DM whose text matches the campaign keywords", async () => {
@@ -1153,7 +1169,7 @@ describe("DM Worker — DM keyword trigger", () => {
     );
   });
 
-  it("should release the usage reservation and rethrow when the send fails", async () => {
+  it("retains the usage reservation and stops retrying an ambiguous DM send", async () => {
     mockSendDirectMessage.mockRejectedValue(new Error("Meta is down"));
 
     const processor = getProcessor();
@@ -1161,13 +1177,10 @@ describe("DM Worker — DM keyword trigger", () => {
       "Meta is down"
     );
 
-    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
-      "workspace_123",
-      usagePeriodStart
-    );
+    expect(mockReleaseWorkspaceDMReservation).not.toHaveBeenCalled();
     expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ status: "FAILED" }),
+        create: expect.objectContaining({ status: "FAILED", dmDeliveryUnconfirmed: true }),
       })
     );
   });
@@ -1682,6 +1695,9 @@ describe("ambiguous Meta sends and durable comment claims", () => {
     await expect(getProcessor()(createMockJob())).rejects.toMatchObject({ name: "UnrecoverableError", message: expect.stringContaining("Connection reset after send") });
     expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
     expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ dmDeliveryUnconfirmed: true }) }));
+    const failedEvent = mockPrisma.deliveryEvent.upsert.mock.calls.find(([args]) => args.update.status === "UNCONFIRMED");
+    expect(failedEvent).toBeDefined();
+    expect(failedEvent![0].update).not.toHaveProperty("message");
   });
 
   it("blocks the historical code 1 failures before any further network send", async () => {
@@ -1743,6 +1759,35 @@ it("deduplicates a redelivered Meta button tap after queue retention expires", a
   expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
 });
 
+it("keeps the postback attempt message and version consistent after a confirmed rejection and campaign edit", async () => {
+  const claims = new Set<string>();
+  const events = new Map<string, Record<string, unknown>>();
+  mockPrisma.postbackDelivery.create.mockImplementation(async ({ data }: { data: { id: string } }) => {
+    if (claims.has(data.id)) throw { code: "P2002" };
+    claims.add(data.id); return data;
+  });
+  mockPrisma.postbackDelivery.delete.mockImplementation(async ({ where }: { where: { id: string } }) => claims.delete(where.id));
+  mockPrisma.deliveryEvent.upsert.mockImplementation(async (args: {
+    where: { operationKey: string }; create: Record<string, unknown>; update: Record<string, unknown>;
+  }) => {
+    const previous = events.get(args.where.operationKey);
+    const next = previous ? { ...previous, ...args.update } : { id: args.where.operationKey, ...args.create };
+    events.set(args.where.operationKey, next); return next;
+  });
+  const data = { instagramAccountId: "ig_456", userId: "commenter_999", payload: "reveal:auto_789", mid: "retry-same-tap" };
+  mockPrisma.automation.findFirst.mockResolvedValue({ ...mockAutomation, version: 1, dmMessage: "First message" });
+  mockSendDirectMessage.mockRejectedValueOnce(new MetaApiError(10, undefined, undefined, "Confirmed rejection"));
+  const process = getProcessor();
+  await expect(process(createMockPostbackJob(data))).rejects.toThrow("Confirmed rejection");
+  expect([...events.values()][0]).toMatchObject({ status: "FAILED", campaignVersion: 1, message: "First message" });
+  mockPrisma.automation.findFirst.mockResolvedValue({ ...mockAutomation, version: 2, dmMessage: "Second message" });
+  await process(createMockPostbackJob(data));
+  expect(mockSendDirectMessage).toHaveBeenLastCalledWith("decrypted_token", "ig_456", "commenter_999", "Second message");
+  expect([...events.values()][0]).toMatchObject({ status: "SENT", campaignVersion: 2, message: "Second message" });
+  await process({ ...createMockPostbackJob(data), id: "redelivery-after-success" });
+  expect(mockSendDirectMessage).toHaveBeenCalledTimes(2);
+});
+
 it("retains the public reply claim if sending succeeded but its log write failed", async () => {
   const { sendCommentReply } = await import("@/lib/meta/client");
   vi.mocked(sendCommentReply).mockResolvedValue({ id: "public-reply" });
@@ -1755,4 +1800,76 @@ it("retains the public reply claim if sending succeeded but its log write failed
   await process({ ...createMockJob(), id: "next-poll" });
   expect(sendCommentReply).toHaveBeenCalledTimes(1);
   expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+});
+
+describe("persistent single-winner campaign execution", () => {
+  function persistReservations() {
+    const events = new Map<string, Record<string, unknown>>();
+    mockPrisma.deliveryEvent.upsert.mockImplementation(async (args: {
+      where: { operationKey: string }; create: Record<string, unknown>; update: Record<string, unknown>;
+    }) => {
+      const row = events.get(args.where.operationKey);
+      const next = row ? { ...row, ...args.update } : { id: args.where.operationKey, ...args.create };
+      events.set(args.where.operationKey, next);
+      return next;
+    });
+    return events;
+  }
+
+  it("sends one public and private reply from the specific campaign, not the older global campaign", async () => {
+    const { sendCommentReply } = await import("@/lib/meta/client");
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...mockAutomation, id: "global", matchAnyPost: true, createdAt: new Date("2025-01-01"), publicReplyEnabled: true, publicReplyMessages: ["global"] },
+      { ...mockAutomation, publicReplyEnabled: true, publicReplyMessages: ["specific"] },
+    ]);
+    await getProcessor()(createMockJob());
+    expect(sendCommentReply).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.deliveryEvent.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ automationId: "auto_789", stage: "PUBLIC_REPLY", status: "SENT" }) }));
+  });
+
+  it("pins the same campaign and message snapshot after priorities and texts change on retry", async () => {
+    persistReservations();
+    mockSendPrivateReply.mockRejectedValueOnce(new MetaApiError(100, undefined, undefined, "Explicit rejection"));
+    const processor = getProcessor();
+    await expect(processor(createMockJob())).rejects.toThrow("Explicit rejection");
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...mockAutomation, dmMessage: "Changed original message", version: 2 },
+      { ...mockAutomation, id: "new-priority", priority: 99, dmMessage: "Wrong resource" },
+    ]);
+    await processor({ ...createMockJob(), id: "retry" });
+    expect(mockSendPrivateReply).toHaveBeenLastCalledWith("decrypted_token", "ig_456", "comment_555", "Hey commenter_user! Here is the link: https://example.com");
+  });
+
+  it("never switches to a new winner after another campaign's ambiguous legacy delivery", async () => {
+    mockPrisma.dmLog.findMany.mockResolvedValue([{ automationId: "previous", status: "FAILED", errorMessage: "MetaApiError 1: Unknown", dmDeliveryUnconfirmed: false }]);
+    await getProcessor()(createMockJob());
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.deliveryEvent.upsert).not.toHaveBeenCalled();
+  });
+
+  it("uses a durable claim for overlapping inbound DM jobs and sends only the priority winner", async () => {
+    persistReservations();
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...mockAutomation, dmTriggerEnabled: true },
+      { ...mockAutomation, id: "priority-winner", priority: 10, dmTriggerEnabled: true, dmMessage: "Priority resource" },
+    ]);
+    let claimed = false;
+    mockPrisma.dmLog.updateMany.mockImplementation(async () => {
+      if (claimed) return { count: 0 }; claimed = true; return { count: 1 };
+    });
+    const processor = getProcessor();
+    const job = { name: "process-message", id: "message-one", attemptsMade: 0, data: {
+      instagramAccountId: "ig_456", messageId: "incoming", messageText: "LINK", senderId: "commenter_999",
+    } };
+    await Promise.all([processor(job), processor({ ...job, id: "message-redelivery" })]);
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessage).toHaveBeenCalledWith("decrypted_token", "ig_456", "commenter_999", "Priority resource");
+  });
+
+  it("drafts and archived campaigns never deliver even with isActive stale true", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([{ ...mockAutomation, lifecycle: "DRAFT" }, { ...mockAutomation, id: "archive", lifecycle: "ARCHIVED" }]);
+    await getProcessor()(createMockJob());
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
 });
