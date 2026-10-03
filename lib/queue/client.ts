@@ -41,6 +41,7 @@ export interface ProcessCommentJob {
 
 // Delivered when a user taps an opening DM's button — carries the reveal target.
 export interface ProcessPostbackJob {
+  interactionAt?: string;
   accountConnectionId?: string;
   instagramAccountId: string;
   userId: string;
@@ -60,6 +61,7 @@ export interface ProcessPostbackJob {
 // Enqueued with a delay (followUpDelayMinutes) so it can fire later, not just
 // immediately.
 export interface ProcessFollowUpJob {
+  deliveryEventId?: string;
   accountConnectionId?: string;
   instagramAccountId: string;
   userId: string;
@@ -70,6 +72,7 @@ export interface ProcessFollowUpJob {
 // An inbound DM from a user. Campaigns with `dmTriggerEnabled` whose keywords
 // match the text reply to the sender.
 export interface ProcessMessageJob {
+  interactionAt?: string;
   accountConnectionId?: string;
   instagramAccountId: string;
   messageId: string;

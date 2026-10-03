@@ -72,6 +72,7 @@ interface WebhookEntry {
     };
   }>;
   messaging?: Array<{
+    timestamp?: number;
     sender?: { id?: string };
     recipient?: { id?: string };
     postback?: { mid?: string; title?: string; payload?: string };
@@ -88,6 +89,7 @@ interface WebhookEntry {
 }
 
 export interface WebhookMessageEvent {
+  interactionAt?: string;
   instagramAccountId: string;
   messageId: string;
   messageText: string;
@@ -95,6 +97,7 @@ export interface WebhookMessageEvent {
 }
 
 export interface WebhookPostbackEvent {
+  interactionAt?: string;
   instagramAccountId: string;
   userId: string;
   payload: string;
@@ -187,6 +190,7 @@ export function parsePostbackEvents(
         userId,
         payload: postbackPayload,
         mid: messaging.postback?.mid,
+        ...(validInteractionTimestamp(messaging.timestamp) ? { interactionAt: new Date(messaging.timestamp!).toISOString() } : {}),
       });
     }
   }
@@ -233,11 +237,16 @@ export function parseMessageEvents(
         messageId,
         messageText: text,
         senderId,
+        ...(validInteractionTimestamp(messaging.timestamp) ? { interactionAt: new Date(messaging.timestamp!).toISOString() } : {}),
       });
     }
   }
 
   return events;
+}
+
+function validInteractionTimestamp(timestamp: number | undefined): timestamp is number {
+  return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0 && timestamp <= Date.now();
 }
 
 /**
