@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   const duplicate = await duplicateCampaign({
     automationId,
     workspaceId: context.workspaceId,
+    actorId: context.userId,
   });
 
   if (!duplicate) {

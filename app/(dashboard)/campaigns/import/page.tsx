@@ -99,6 +99,7 @@ export default function ImportCampaignsPage() {
           <code className="text-accent">opening_dm_button</code>{t(". Keywords go in one cell, separated by commas. Use")}{" "}
           <code className="text-accent">{"{link}"}</code> {t("in the message to insert the tracked link.")}
         </p>
+        <p className="mt-2 text-sm text-muted">Imports werden immer als Entwürfe gespeichert. Nach dem Import kannst du jede Kampagne prüfen und ausdrücklich über „Go Live“ aktivieren; ein Aktivstatus aus der Quelldatei wird nicht übernommen.</p>
       </div>
 
       {error && (

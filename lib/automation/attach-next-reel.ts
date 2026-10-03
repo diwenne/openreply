@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import { saveCampaignRevision } from "@/lib/campaigns/mutations";
 import {
   createInstagramContext,
   hasInstagramCredentials,
@@ -23,7 +24,7 @@ export type AttachNextReelResult = {
  */
 export async function attachPendingNextReels(): Promise<AttachNextReelResult> {
   const pending = await prisma.automation.findMany({
-    where: { pendingNextReel: true },
+    where: { pendingNextReel: true, isActive: true, lifecycle: "ACTIVE" },
     include: { instagramAccount: true },
   });
 
@@ -53,6 +54,11 @@ export async function attachPendingNextReels(): Promise<AttachNextReelResult> {
   for (const { account, automations } of byAccount.values()) {
     checked += automations.length;
     if (!account || !hasInstagramCredentials(account)) continue;
+    // A legacy duplicate must be resolved explicitly, never attached twice.
+    if (automations.length !== 1) {
+      console.warn("[attach-next-reel] conflicting active pending campaigns; manual resolution required", account.id);
+      continue;
+    }
 
     let reels: InstagramMedia[];
     try {
@@ -72,19 +78,36 @@ export async function attachPendingNextReels(): Promise<AttachNextReelResult> {
     for (const automation of automations) {
       // The "next" reel = the earliest one posted after the campaign was created.
       const nextReel = reels.find(
-        (reel) => new Date(reel.timestamp) > automation.createdAt
+        (reel) => new Date(reel.timestamp) > (automation.armedAt ?? automation.createdAt)
       );
       if (!nextReel) continue;
 
-      await prisma.automation.update({
-        where: { id: automation.id },
-        data: {
-          postId: nextReel.id,
-          postUrl: nextReel.permalink ?? null,
-          pendingNextReel: false,
-        },
+      const attached = await prisma.$transaction(async (tx) => {
+        // API and worker share this account lock with activation. Recheck the
+        // current version after fetching Meta media outside the transaction.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`next-reel:${account.id}`}))`;
+        const current = await tx.automation.findFirst({
+          where: { id: automation.id, pendingNextReel: true, isActive: true,
+            lifecycle: "ACTIVE", version: automation.version },
+        });
+        if (!current) return false;
+        const occupied = await tx.automation.findFirst({
+          where: { instagramAccountId: account.id, postId: nextReel.id, id: { not: automation.id } },
+        });
+        if (occupied) return false;
+        const updated = await tx.automation.updateMany({
+          where: { id: automation.id, pendingNextReel: true, isActive: true,
+            lifecycle: "ACTIVE", version: automation.version },
+          data: { postId: nextReel.id, postUrl: nextReel.permalink ?? null,
+            pendingNextReel: false, version: { increment: 1 } },
+        });
+        if (updated.count === 1) {
+          const campaign = await tx.automation.findUnique({ where: { id: automation.id } });
+          if (campaign) await saveCampaignRevision(tx, campaign, "system:next-reel");
+        }
+        return updated.count === 1;
       });
-      bound += 1;
+      if (attached) bound += 1;
     }
   }
 

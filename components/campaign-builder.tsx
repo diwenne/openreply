@@ -19,6 +19,7 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
 import { readCache, writeCache } from "@/lib/client-cache";
+import { campaignLifecycle, type CampaignLifecycle } from "@/lib/campaigns/selection";
 import {
   IMPORT_QUEUE_KEY,
   IMPORT_ACCOUNT_KEY,
@@ -53,6 +54,10 @@ interface LoadedCampaign {
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
+  lifecycle?: string;
+  priority?: number;
+  excludedKeywords?: string[];
+  wholeWordMatch: boolean;
   instagramAccountId: string;
   trackedLinks?: { destinationUrl: string; label?: string | null }[];
 }
@@ -144,7 +149,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [selectedAccountId, setSelectedAccountId] = useState("");
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [isActive, setIsActive] = useState(true);
+  const [isActive, setIsActive] = useState(false);
+  const [lifecycle, setLifecycle] = useState<CampaignLifecycle>("DRAFT");
+  const [priority, setPriority] = useState(0);
+  const [excludedKeywordText, setExcludedKeywordText] = useState("");
+  const [wholeWordMatch, setWholeWordMatch] = useState(true);
+  const [simulationText, setSimulationText] = useState("");
+  const [simulationKind, setSimulationKind] = useState<"comment" | "dm">("comment");
+  const [simulating, setSimulating] = useState(false);
+  const [simulation, setSimulation] = useState<{ errors: string[]; winner: { id: string; name: string } | null; conflicts: { id: string; name: string }[]; message: string | null; buttonMessage: string | null; buttonLinks: { label: string; destinationUrl: string }[]; openingMessage: string | null; followMessage: string | null; followUpMessage: string | null; warnings: string[] } | null>(null);
+  const [history, setHistory] = useState<{ id: string; createdAt: string; snapshot: { version?: number; lifecycle?: string; name?: string } }[] | null>(null);
 
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
@@ -275,6 +289,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
+        setLifecycle(campaignLifecycle(c));
+        setPriority(c.priority ?? 0);
+        setExcludedKeywordText((c.excludedKeywords ?? []).join(", "));
+        setWholeWordMatch(c.wholeWordMatch);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
         setTrackedDestinationUrl(link);
         setLinkOpen(Boolean(link));
@@ -385,16 +403,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setDmMessage((cur) => (cur.includes("{link}") ? cur : `${cur.trim()} {link}`.trim()));
   }
 
-  async function handleSubmit(activeValue: boolean) {
+  async function handleSubmit(activeValue: boolean, lifecycleValue: CampaignLifecycle = activeValue ? "ACTIVE" : "PAUSED") {
     setError(null);
+    // CSV rows are imported as drafts. Review/publication is a separate action
+    // after the import, never inherited from source data or the primary save.
+    if (importQueue) { activeValue = false; lifecycleValue = "DRAFT"; }
 
     if (!selectedAccountId) return setError(t("Connect an Instagram account first."));
-    if (triggerScope === "specific" && !postId)
+    if (activeValue && triggerScope === "specific" && !postId)
       return setError(t("Pick a post or reel to trigger the campaign."));
-    if (matchMode === "specific" && keywords.length === 0)
+    if (activeValue && matchMode === "specific" && keywords.length === 0)
       return setError(t("Add at least one keyword, or switch to any word."));
-    if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
+    if (activeValue && !dmMessage.trim()) return setError(t("Add the DM with the link."));
+    if (activeValue && openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError(t("Your opening DM needs a message and a button label."));
 
     setSaving(true);
@@ -430,6 +451,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
       followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
       isActive: activeValue,
+      lifecycle: lifecycleValue,
+      priority,
+      excludedKeywords: excludedKeywordText.split(",").map((word) => word.trim()).filter(Boolean),
+      wholeWordMatch,
     };
 
     try {
@@ -506,6 +531,30 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     }
   }
 
+  async function runSimulation() {
+    setError(null);
+    setSimulating(true);
+    try {
+      const response = await fetch("/api/automations/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        instagramAccountId: selectedAccountId, text: simulationText, kind: simulationKind, mediaId: postId ?? undefined,
+        candidate: { id: campaignId, name: name || "Unsaved draft", postId, matchAnyPost: triggerScope === "any", pendingNextReel: triggerScope === "next", keywords, excludedKeywords: excludedKeywordText.split(",").map((word) => word.trim()).filter(Boolean), priority, matchAnyWord: matchMode === "any", wholeWordMatch, dmTriggerEnabled, dmMessage, openingDmEnabled, openingDmMessage, openingDmButtonLabel, requireFollow, followPromptMessage, followUpEnabled, followUpMessage, publicReplyEnabled, publicReplyMessages, trackedDestinationUrl, secondaryDestinationUrl, linkButtonLabel, secondaryButtonLabel },
+      }) });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || "Simulation failed");
+      setSimulation(data.data);
+    } catch (error) { setError(error instanceof Error ? error.message : "Simulation failed"); }
+    finally { setSimulating(false); }
+  }
+
+  async function loadHistory() {
+    try {
+      const response = await fetch(`/api/automations/history?id=${campaignId}`, { cache: "no-store" });
+      const data = await response.json();
+      if (data.success) setHistory(data.data);
+      else setError(data.error || "History unavailable");
+    } catch { setError("History unavailable"); }
+  }
+
   // Skip the current imported row without saving a campaign for it, advancing
   // to the next one (or finishing the import if it was the last).
   function skipRow() {
@@ -578,7 +627,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   isActive ? "bg-success/15 text-success" : "bg-zinc-500/15 text-muted"
                 }`}
               >
-                {isActive ? t("LIVE") : t("PAUSED")}
+                {lifecycle}
               </span>
             </>
           ) : (
@@ -586,6 +635,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {!importQueue && <button type="button" onClick={() => handleSubmit(false, "DRAFT")} disabled={saving} className="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50">{t("Save draft")}</button>}
+          {mode === "edit" && <button type="button" onClick={() => handleSubmit(false, "ARCHIVED")} disabled={saving} className="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50">{t("Archive")}</button>}
           {importQueue && (
             <button
               type="button"
@@ -618,11 +669,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             ))}
           <button
             type="button"
-            onClick={() => handleSubmit(mode === "new" ? true : isActive)}
+            onClick={() => handleSubmit(mode === "new" ? true : isActive, mode === "new" ? "ACTIVE" : lifecycle)}
             disabled={saving}
             className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {saving ? t("Saving…") : mode === "new" ? t("Go Live") : t("Save changes")}
+            {saving ? t("Saving…") : importQueue ? t("Save draft") : mode === "new" ? t("Go Live") : t("Save changes")}
           </button>
         </div>
       </div>
@@ -668,6 +719,36 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
 
+        <Section title={t("Rules and priority")}>
+          <label className="block text-xs text-muted">{t("Priority (higher wins within the same post scope)")}
+            <input type="number" min={-1000} max={1000} value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground" />
+          </label>
+          <label className="block text-xs text-muted">{t("Excluded words (comma separated)")}
+            <input value={excludedKeywordText} onChange={(e) => setExcludedKeywordText(e.target.value)} maxLength={510} className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground" />
+          </label>
+          <label className="flex gap-2 text-sm"><input type="checkbox" checked={wholeWordMatch} onChange={(e) => setWholeWordMatch(e.target.checked)} />{t("Whole-word matching")}</label>
+          <p className="text-xs text-muted">{t("Specific-post campaigns take precedence over all-post campaigns. Equal priorities are flagged; the older campaign wins.")}</p>
+        </Section>
+
+        <Section title={t("Rule simulation — no messages sent")}>
+          <select value={simulationKind} onChange={(e) => setSimulationKind(e.target.value as "comment" | "dm")} className="w-full rounded border border-border bg-surface p-2 text-sm"><option value="comment">{t("Comment on selected post")}</option><option value="dm">{t("Incoming DM")}</option></select>
+          <input value={simulationText} onChange={(e) => setSimulationText(e.target.value)} placeholder={t("Example comment or DM")} maxLength={2000} className="w-full rounded border border-border bg-surface p-2 text-sm" />
+          <button type="button" disabled={simulating || !selectedAccountId} onClick={() => void runSimulation()} className="rounded border border-border px-3 py-2 text-sm disabled:opacity-50">{simulating ? t("Checking…") : t("Check rules")}</button>
+          {simulation && <div className="space-y-2 rounded border border-border p-3 text-xs">
+            <p className="font-semibold">{simulation.winner ? `${t("Winner")}: ${simulation.winner.name}` : t("No matching campaign")}</p>
+            {simulation.conflicts.length > 0 && <p className="text-warning">{t("Equal-priority conflicts")}: {simulation.conflicts.map((c) => c.name).join(", ")}</p>}
+            {simulation.errors.map((issue) => <p key={issue} className="text-error">{issue}</p>)}
+            {simulation.openingMessage && <p>{t("Opening DM")}: {simulation.openingMessage}</p>}
+            {simulation.followMessage && <p>{t("Follow gate")}: {simulation.followMessage}</p>}
+            {simulation.message && <p className="whitespace-pre-wrap">{t("Delivery DM")}: {simulation.buttonLinks.length ? simulation.buttonMessage : simulation.message}</p>}
+            {simulation.buttonLinks.map((button, index) => <p key={index} className="break-all">{button.label} → {button.destinationUrl}</p>)}
+            {simulation.followUpMessage && <p>{t("Follow-up")}: {simulation.followUpMessage}</p>}
+            {simulation.warnings.map((warning) => <p key={warning} className="text-muted">{warning}</p>)}
+          </div>}
+          {mode === "edit" && <button type="button" onClick={() => void loadHistory()} className="text-xs text-muted underline">{t("Show saved revisions")}</button>}
+          {history && <div className="max-h-48 space-y-1 overflow-y-auto text-xs text-muted">{history.length ? history.map((revision) => <p key={revision.id}>v{revision.snapshot.version ?? "?"} · {revision.snapshot.lifecycle} · {new Date(revision.createdAt).toLocaleString()}</p>) : <p>{t("No revisions recorded yet.")}</p>}</div>}
+        </Section>
+
         <Section title={t("When someone comments on")}>
           <Radio
             checked={triggerScope === "specific"}
@@ -697,6 +778,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           >
             {t("next post or reel")}
           </Radio>
+          {triggerScope === "next" && <p className="text-xs text-muted">{t("Only one active campaign can wait for the next reel per account. Arming starts when you go live, not when you save a draft.")}</p>}
         </Section>
 
         <Section title={t("And this comment has")}>
