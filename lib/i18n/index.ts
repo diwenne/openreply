@@ -39,6 +39,8 @@ const labels: Record<string, StaticMessageKey> = {
   all: "All",
   active: "Active",
   paused: "Paused",
+  draft: "Draft",
+  archived: "Archived",
   waiting: "Waiting",
   delayed: "Delayed",
   failed: "Failed",

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/client";
 import { generateReportShareSlug } from "@/lib/reports/share";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
+import { saveCampaignRevision } from "@/lib/campaigns/mutations";
 
 // Matches the campaign name limit the create and update schemas enforce.
 const MAX_NAME_LENGTH = 100;
@@ -29,7 +30,7 @@ export function buildDuplicateName(name: string): string {
  * list never loads, and a field added to the model later is copied without
  * anyone having to remember this function.
  *
- * Four things are deliberately not carried over: the copy starts paused so it
+ * Four things are deliberately not carried over: the copy starts as a draft so it
  * cannot fire before it has been reviewed, it gets its own report share slug,
  * its tracked links get fresh slugs so click stats stay separate from the
  * original's, and the name gains a "copy" suffix.
@@ -37,9 +38,11 @@ export function buildDuplicateName(name: string): string {
 export async function duplicateCampaign({
   automationId,
   workspaceId,
+  actorId,
 }: {
   automationId: string;
   workspaceId: string;
+  actorId?: string;
 }) {
   const source = await prisma.automation.findFirst({
     where: { id: automationId, workspaceId },
@@ -52,7 +55,8 @@ export async function duplicateCampaign({
   // spread, since they are rows of their own.
   const { trackedLinks, ...settings } = source;
 
-  return prisma.automation.create({
+  return prisma.$transaction(async (tx) => {
+  const copy = await tx.automation.create({
     data: {
       ...settings,
       // The rest of the row identifies the original rather than describing it,
@@ -64,6 +68,9 @@ export async function duplicateCampaign({
       updatedAt: undefined,
       name: buildDuplicateName(settings.name),
       isActive: false,
+      lifecycle: "DRAFT",
+      armedAt: null,
+      version: 1,
       reportShareSlug: generateReportShareSlug(),
       trackedLinks: {
         // Numbered from the order just read, so the copy's buttons match
@@ -78,5 +85,8 @@ export async function duplicateCampaign({
       },
     },
     include: { trackedLinks: true },
+  });
+  await saveCampaignRevision(tx, copy, actorId);
+  return copy;
   });
 }

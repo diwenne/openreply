@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    $transaction: vi.fn(),
     automation: {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    trackedLink: { findMany: vi.fn() },
+    campaignRevision: { create: vi.fn() },
   },
 }));
 
@@ -88,11 +91,13 @@ function createArgs() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.$transaction.mockImplementation((callback) => callback(mockPrisma));
+  mockPrisma.trackedLink.findMany.mockResolvedValue([]);
   mockPrisma.automation.findFirst.mockResolvedValue(sourceCampaign);
   mockPrisma.automation.create.mockImplementation(
     async ({ data }: { data: Record<string, unknown> }) => ({
-      id: "automation_copy",
       ...data,
+      id: "automation_copy",
     })
   );
 });

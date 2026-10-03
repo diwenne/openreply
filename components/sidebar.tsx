@@ -18,6 +18,7 @@ const navItems = [
   { label: "Overview", href: "/overview" },
   { label: "Inbox", href: "/inbox" },
   { label: "Campaigns", href: "/campaigns" },
+  { label: "Templates & resources", href: "/library" },
   { label: "DM Logs", href: "/logs" },
   { label: "Settings", href: "/settings" },
   { label: "Diagnostics", href: "/diagnostics" },

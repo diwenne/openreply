@@ -51,6 +51,7 @@ import {
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
+import { campaignCanSend, selectAutomation } from "@/lib/campaigns/selection";
 
 import { ZernioApiError } from "@/lib/zernio/client";
 
@@ -310,7 +311,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     orderBy: { createdAt: "asc" },
   });
 
-  for (const automation of automations) {
+  const winner = selectAutomation(automations, {
+    kind: "comment", text: commentText,
+    mediaIds: [mediaId, ...(originalMediaId ? [originalMediaId] : [])],
+  }).winner;
+  for (const automation of winner ? [winner] : []) {
     // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
     const matchResult = automation.matchAnyWord
       ? { matched: true, matchedKeyword: null }
@@ -895,6 +900,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   if (
     !automation ||
+    !campaignCanSend(automation) ||
     automation.instagramAccount.instagramId !== instagramAccountId ||
     !hasInstagramCredentials(automation.instagramAccount)
   ) {
@@ -1217,6 +1223,7 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
   if (
     !automation ||
     !automation.followUpEnabled ||
+    !campaignCanSend(automation) ||
     !automation.followUpMessage?.trim() ||
     automation.instagramAccount.instagramId !== instagramAccountId ||
     !hasInstagramCredentials(automation.instagramAccount)
@@ -1283,7 +1290,8 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
 
   const dedupeId = `dm:${messageId}`;
 
-  for (const automation of automations) {
+  const winner = selectAutomation(automations, { kind: "dm", text: messageText }).winner;
+  for (const automation of winner ? [winner] : []) {
     const matchResult = automation.matchAnyWord
       ? { matched: true, matchedKeyword: null }
       : matchKeywords(

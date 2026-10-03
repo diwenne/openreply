@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { readCache, writeCache } from "@/lib/client-cache";
+import { campaignLifecycle } from "@/lib/campaigns/selection";
 
 interface Campaign {
   id: string;
@@ -34,6 +35,7 @@ interface Campaign {
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
   isActive: boolean;
+  lifecycle?: string;
   wholeWordMatch: boolean;
   instagramAccountId: string;
   instagramAccount: {
@@ -83,7 +85,8 @@ export default function CampaignsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">(
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "draft" | "archived">(
     "all"
   );
 
@@ -201,14 +204,15 @@ export default function CampaignsPage() {
 
   async function toggleActive(id: string, isActive: boolean) {
     try {
-      await fetch(`/api/automations?id=${id}`, {
+      setActionError(null);
+      const response = await fetch(`/api/automations?id=${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive }),
       });
-      setAutomations((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, isActive: !isActive } : a))
-      );
+      const data = await response.json();
+      if (!data.success) return setActionError(data.error || "Campaign could not be updated");
+      void fetchAutomations();
     } catch (err) {
       console.error("Failed to toggle:", err);
     }
@@ -229,11 +233,13 @@ export default function CampaignsPage() {
     }
   }
 
-  async function deleteAutomation(id: string) {
-    if (!confirm(t("Delete this campaign? This cannot be undone."))) return;
+  async function archiveAutomation(id: string) {
+    if (!confirm(t("Archive this campaign? Sending stops; links and reports remain available."))) return;
     try {
-      await fetch(`/api/automations?id=${id}`, { method: "DELETE" });
-      setAutomations((prev) => prev.filter((a) => a.id !== id));
+      const response = await fetch(`/api/automations?id=${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lifecycle: "ARCHIVED", isActive: false }) });
+      const data = await response.json();
+      if (!data.success) return setActionError(data.error || "Archive failed");
+      void fetchAutomations();
     } catch (err) {
       console.error("Failed to delete:", err);
     }
@@ -268,8 +274,9 @@ export default function CampaignsPage() {
 
   const query = search.trim().toLowerCase();
   const filtered = automations.filter((a) => {
-    if (statusFilter === "active" && !a.isActive) return false;
-    if (statusFilter === "paused" && a.isActive) return false;
+    const status = campaignLifecycle(a).toLowerCase();
+    if (statusFilter !== "all" && status !== statusFilter) return false;
+    if (statusFilter === "all" && status === "archived") return false;
     if (!query) return true;
     return (
       a.name.toLowerCase().includes(query) ||
@@ -280,6 +287,7 @@ export default function CampaignsPage() {
 
   return (
     <div className="space-y-6">
+      {actionError && <p role="alert" className="rounded border border-error/30 bg-error/10 p-3 text-sm text-error">{actionError}</p>}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -322,7 +330,7 @@ export default function CampaignsPage() {
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
           />
           <div className="inline-flex shrink-0 rounded-lg bg-surface p-1">
-            {(["all", "active", "paused"] as const).map((s) => (
+            {(["all", "active", "paused", "draft", "archived"] as const).map((s) => (
               <button
                 key={label(s)}
                 type="button"
@@ -430,7 +438,7 @@ export default function CampaignsPage() {
                         : "bg-zinc-500/10 text-muted"
                     }`}
                   >
-                    {auto.isActive ? t("Active") : t("Paused")}
+                    {campaignLifecycle(auto)}
                   </span>
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-warning">
@@ -478,7 +486,7 @@ export default function CampaignsPage() {
                   </span>
                   <span>·</span>
                   <span className="font-medium text-foreground">
-                    {auto.analytics.ctr}{t("% CTR")}
+                    {auto.analytics.ctr}{t(" clicks / 100 sends")}
                   </span>
                   <span>·</span>
                   <span>{auto.analytics.sent} {t("sent")}</span>
@@ -561,11 +569,11 @@ export default function CampaignsPage() {
                         <button
                           onClick={() => {
                             setMenuOpenId(null);
-                            void deleteAutomation(auto.id);
+                            void archiveAutomation(auto.id);
                           }}
                           className="block w-full px-3 py-2 text-left text-sm text-error hover:bg-surface-hover"
                         >
-                          {t("Delete")}
+                          {t("Archive")}
                         </button>
                       </div>
                     </>
