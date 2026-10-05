@@ -85,7 +85,7 @@ export default function TikTokConnection({
 
   return (
     <section className="panel rounded p-4 sm:p-6">
-      <h2 className="text-base font-semibold mb-6">{t("TikTok Connection")}</h2>
+      <h2 className="text-base font-semibold mb-6">{t("TikTok Connection (Beta)")}</h2>
 
       <div className="space-y-3">
         {accounts.length === 0 && (
