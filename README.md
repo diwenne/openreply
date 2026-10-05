@@ -46,6 +46,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - English, Traditional Chinese and Brazilian Portuguese interface, with a saved language preference. See [interface languages](docs/localization.md).
 - Inbox. Read your Instagram DM conversations and reply from the dashboard, inside Meta's 24-hour messaging window. Cached so it loads instantly on repeat visits.
 - DM logs. Every send, skip, and failure is logged with a reason.
+- TikTok comment replies, optional. Answer TikTok comments that contain a keyword with a public reply, on all videos or one. See [docs/tiktok.md](docs/tiktok.md).
 - Self-comment filtering. Your own comments never trigger a reply, since Meta rejects DMing yourself anyway.
 
 ## How it works

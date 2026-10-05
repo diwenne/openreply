@@ -217,6 +217,36 @@ export async function releaseDMSlot(
 }
 
 /**
+ * Reserve one slot in an arbitrary fixed-window counter, with the same atomic
+ * script as reserveDMSlot. Used for TikTok replies, which have their own
+ * per-account limits.
+ */
+export async function reserveRateSlot(
+  key: string,
+  max: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; currentCount: number }> {
+  const result = await getRedis().eval(
+    RESERVE_DM_SLOT_SCRIPT,
+    1,
+    key,
+    max,
+    windowSeconds
+  );
+  const values = Array.isArray(result) ? result : [];
+  return {
+    allowed: toScriptNumber(values[0]) === 1,
+    currentCount: toScriptNumber(values[1]),
+  };
+}
+
+/** Hand back a slot from reserveRateSlot that was never used. */
+export async function releaseRateSlot(key: string): Promise<void> {
+  const client = getRedis();
+  if ((await client.decr(key)) < 0) await client.del(key);
+}
+
+/**
  * Backwards-compatible helper for tests and admin scripts.
  * Prefer reserveDMSlot in workers.
  */

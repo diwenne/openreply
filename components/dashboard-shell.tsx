@@ -9,6 +9,7 @@ interface DashboardShellProps {
   workspaceName: string;
   instagramUsername: string | null;
   instagramAccountCount: number;
+  tiktokEnabled?: boolean;
 }
 
 export default function DashboardShell({
@@ -16,6 +17,7 @@ export default function DashboardShell({
   workspaceName,
   instagramUsername,
   instagramAccountCount,
+  tiktokEnabled = false,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -27,6 +29,7 @@ export default function DashboardShell({
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         workspaceName={workspaceName}
+        tiktokEnabled={tiktokEnabled}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

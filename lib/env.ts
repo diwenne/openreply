@@ -46,6 +46,37 @@ export function getMissingInstagramOAuthEnv(): string[] {
   });
 }
 
+// TikTok is optional. With either variable unset, every TikTok route, page and
+// worker loop stays off and Instagram behaves exactly as before.
+const TIKTOK_OAUTH_ENV = [
+  "TIKTOK_APP_ID",
+  "TIKTOK_APP_SECRET",
+  "ENCRYPTION_KEY",
+  "NEXTAUTH_SECRET",
+] as const;
+
+export function isTikTokConfigured(): boolean {
+  return Boolean(process.env.TIKTOK_APP_ID && process.env.TIKTOK_APP_SECRET);
+}
+
+export function getMissingTikTokOAuthEnv(): string[] {
+  return TIKTOK_OAUTH_ENV.filter((name) => {
+    const value = process.env[name];
+    if (!value) return true;
+    return name === "ENCRYPTION_KEY" && !HEX_32_BYTE.test(value);
+  });
+}
+
+/**
+ * TikTok only accepts a registered redirect URL that ends in "/", and the
+ * token exchange must send the same string back. Next.js answers the slashed
+ * path with a 308 to /api/tiktok/callback (query string kept), so the route
+ * itself lives at the unslashed path.
+ */
+export function getTikTokRedirectUri(): string {
+  return `${getBaseUrl().replace(/\/+$/, "")}/api/tiktok/callback/`;
+}
+
 export function getMetaGraphApiVersion(): string {
   return process.env.META_GRAPH_API_VERSION ?? "v25.0";
 }

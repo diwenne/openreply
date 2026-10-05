@@ -18,6 +18,7 @@ const navItems = [
   { label: "Overview", href: "/overview" },
   { label: "Inbox", href: "/inbox" },
   { label: "Campaigns", href: "/campaigns" },
+  { label: "TikTok (Beta)", href: "/tiktok" },
   { label: "DM Logs", href: "/logs" },
   { label: "Settings", href: "/settings" },
   { label: "Diagnostics", href: "/diagnostics" },
@@ -27,15 +28,21 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceName: string;
+  /** TikTok is optional; its entry only shows when the server has credentials. */
+  tiktokEnabled?: boolean;
 }
 
 export default function Sidebar({
   isOpen,
   onClose,
   workspaceName,
+  tiktokEnabled = false,
 }: SidebarProps) {
   const { t } = useI18n();
   const pathname = usePathname();
+  const visibleItems = navItems.filter(
+    (item) => tiktokEnabled || item.href !== "/tiktok"
+  );
 
   return (
     <>
@@ -67,7 +74,7 @@ export default function Sidebar({
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             return (
