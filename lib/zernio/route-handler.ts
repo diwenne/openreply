@@ -2,10 +2,21 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@/app/generated/prisma/client';
 import { MetaApiError } from '@/lib/meta/client';
+import { getBaseUrl } from '@/lib/env';
 import { canManageWorkspace, getCurrentWorkspaceContext, type WorkspaceContext } from '@/lib/workspace-access';
 
 export class ConnectionError extends Error {
   constructor(message: string, public status = 400) { super(message); }
+}
+
+// Behind a reverse proxy request.url holds the container's internal origin
+// (http://<container-id>:3000), so also accept the public NEXTAUTH_URL origin
+// and the proxy's forwarded host.
+function isSameOrigin(origin: string, request: Request): boolean {
+  const allowed = new Set<string>([new URL(request.url).origin, new URL(getBaseUrl()).origin]);
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (host) allowed.add(`${request.headers.get('x-forwarded-proto') ?? 'https'}://${host}`);
+  return allowed.has(origin);
 }
 
 export function withZernioManagement(handler: (context: WorkspaceContext, request: Request) => Promise<Response>) {
@@ -16,7 +27,7 @@ export function withZernioManagement(handler: (context: WorkspaceContext, reques
       if (!canManageWorkspace(context.role)) throw new ConnectionError('Only workspace owners and admins can manage the Zernio connection.', 403);
       if (request.method !== 'GET') {
         const origin = request.headers.get('origin');
-        if (origin && origin !== new URL(request.url).origin) throw new ConnectionError('Invalid request origin.', 403);
+        if (origin && !isSameOrigin(origin, request)) throw new ConnectionError('Invalid request origin.', 403);
       }
       return await handler(context, request);
     } catch (error) {
