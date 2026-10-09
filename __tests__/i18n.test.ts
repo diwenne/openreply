@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createI18n, resolveLocale } from "../lib/i18n";
 import ptBR from "../lib/i18n/pt-BR.json";
+import ru from "../lib/i18n/ru.json";
 import zhTW from "../lib/i18n/zh-TW.json";
 
 describe("interface translations", () => {
   it("keeps English as the default for absent or unsupported preferences", () => {
-    for (const value of [undefined, null, "", "fr", "zh-CN", "../zh-TW", "pt", "pt-PT"]) {
+    for (const value of [undefined, null, "", "fr", "zh-CN", "../zh-TW", "pt", "pt-PT", "ru-RU"]) {
       expect(resolveLocale(value)).toBe("en");
     }
     expect(resolveLocale("zh-TW")).toBe("zh-TW");
     expect(resolveLocale("pt-BR")).toBe("pt-BR");
+    expect(resolveLocale("ru")).toBe("ru");
   });
 
   it("renders both interface languages from the same keys", () => {
@@ -51,7 +53,7 @@ describe("interface translations", () => {
   it("has complete, plain-text translations with matching interpolation fields", () => {
     const placeholders = (text: string) =>
       [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-    for (const catalog of [zhTW, ptBR]) {
+    for (const catalog of [zhTW, ptBR, ru]) {
       for (const [source, translation] of Object.entries(catalog)) {
         expect(translation.trim(), source).not.toBe("");
         expect(placeholders(translation), source).toEqual(placeholders(source));
@@ -78,6 +80,23 @@ describe("interface translations", () => {
       ptBR["Sent"],
       ptBR["Owner"],
       ptBR["Active"],
+      "CUSTOM_STATUS",
+    ]);
+  });
+
+  it("keeps the Russian catalog on exactly the same keys", () => {
+    expect(Object.keys(ru).sort()).toEqual(Object.keys(zhTW).sort());
+  });
+
+  it("renders Russian with interpolation and display labels", () => {
+    const { t, label } = createI18n("ru");
+    expect(t("Campaigns")).toBe("Кампании");
+    expect(t("Settings")).toBe("Настройки");
+    expect(t("{count} campaigns", { count: 3 })).toBe("Кампаний: 3");
+    expect(["SENT", "OWNER", "active", "CUSTOM_STATUS"].map(label)).toEqual([
+      ru["Sent"],
+      ru["Owner"],
+      ru["Active"],
       "CUSTOM_STATUS",
     ]);
   });

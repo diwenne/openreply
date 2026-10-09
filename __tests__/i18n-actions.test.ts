@@ -26,6 +26,13 @@ describe("language preference", () => {
     expect(t("Settings")).toBe("Configurações");
   });
 
+  it("renders Russian from the saved cookie", async () => {
+    store.get.mockReturnValue({ value: "ru" });
+    const { locale, t } = await getI18n();
+    expect(locale).toBe("ru");
+    expect(t("Settings")).toBe("Настройки");
+  });
+
   it("falls back to English for an invalid cookie", async () => {
     store.get.mockReturnValue({ value: "unsupported" });
     expect((await getI18n()).locale).toBe("en");

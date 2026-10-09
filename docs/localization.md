@@ -1,6 +1,6 @@
 # Interface languages
 
-OpenReply defaults to English. Choose **English**, **繁體中文** or **Português (Brasil)** in the dashboard
+OpenReply defaults to English. Choose **English**, **繁體中文**, **Português (Brasil)** or **Русский** in the dashboard
 sidebar, under **Settings → Interface language**, or on the sign-in screen.
 The choice is stored in a browser cookie for one year and applies to the
 dashboard, sign-in screens, workspace invitations, and shared campaign reports.
@@ -17,7 +17,7 @@ interface translation's scope.
 ## Adding or changing copy
 
 - `lib/i18n/zh-TW.json` maps English source copy to Traditional Chinese and
-  `lib/i18n/pt-BR.json` to Brazilian Portuguese. Both catalogs must carry exactly
+  `lib/i18n/pt-BR.json` to Brazilian Portuguese, `lib/i18n/ru.json` to Russian. All catalogs must carry exactly
   the same keys; a missing key fails the typecheck. Use complete sentences with
   named placeholders when word order can vary.
 - Client components use `useI18n()`; server components use `await getI18n()`.
