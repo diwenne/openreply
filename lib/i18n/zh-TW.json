@@ -345,6 +345,7 @@
   "Unknown error": "未知錯誤",
   "Unknown member": "未知成員",
   "Untitled campaign": "未命名活動",
+  "Up": "上升",
   "Usage": "使用量",
   "Use an unrestricted, read-write key with Inbox access. OpenReply registers a webhook for this workspace. The key is encrypted and never shown again.": "請使用具備收件匣存取權、可讀寫且未限制範圍的金鑰。OpenReply 會為此工作區註冊 Webhook，並加密保存金鑰。",
   "Use commas to separate words": "多個關鍵字請以逗號分隔",
