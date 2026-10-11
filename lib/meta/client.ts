@@ -20,23 +20,40 @@ export class MetaApiError extends Error {
   }
 }
 
+// These subclasses carry the subcode and the code Meta actually sent. The
+// subcode is the only thing that separates a permanent rejection (a comment
+// not eligible for a private reply, sub=2534025) from one worth retrying, and
+// the fixed code made a 10 or a 200 arrive as a 100 — which is what
+// `isTemplateRejection` in the DM worker tests for before it tries another
+// send. Both arguments default to the previous values, so existing call sites
+// are unaffected.
 export class TokenExpiredError extends MetaApiError {
-  constructor(message: string, fbTraceId?: string) {
-    super(190, undefined, fbTraceId, message);
+  constructor(message: string, fbTraceId?: string, subcode?: number) {
+    super(190, subcode, fbTraceId, message);
     this.name = "TokenExpiredError";
   }
 }
 
 export class RateLimitError extends MetaApiError {
-  constructor(message: string, fbTraceId?: string) {
-    super(368, undefined, fbTraceId, message);
+  constructor(
+    message: string,
+    fbTraceId?: string,
+    subcode?: number,
+    code = 368
+  ) {
+    super(code, subcode, fbTraceId, message);
     this.name = "RateLimitError";
   }
 }
 
 export class PermissionError extends MetaApiError {
-  constructor(message: string, fbTraceId?: string) {
-    super(100, undefined, fbTraceId, message);
+  constructor(
+    message: string,
+    fbTraceId?: string,
+    subcode?: number,
+    code = 100
+  ) {
+    super(code, subcode, fbTraceId, message);
     this.name = "PermissionError";
   }
 }
@@ -127,15 +144,15 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
     switch (code) {
       case 190:
-        throw new TokenExpiredError(message, traceId);
+        throw new TokenExpiredError(message, traceId, subcode);
       case 368:
       case 4:
       case 17:
-        throw new RateLimitError(message, traceId);
+        throw new RateLimitError(message, traceId, subcode, code);
       case 10:
       case 100:
       case 200:
-        throw new PermissionError(message, traceId);
+        throw new PermissionError(message, traceId, subcode, code);
       default:
         throw new MetaApiError(code, subcode, traceId, message);
     }
