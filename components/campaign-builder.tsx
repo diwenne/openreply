@@ -24,6 +24,10 @@ import {
   IMPORT_ACCOUNT_KEY,
   type ImportRow,
 } from "@/lib/import-queue";
+import {
+  validateCreateAutomation,
+  validateUpdateAutomation,
+} from "@/lib/schemas/automation";
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
@@ -388,16 +392,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   async function handleSubmit(activeValue: boolean) {
     setError(null);
 
+    // Basic pre-check before building payload
     if (!selectedAccountId) return setError(t("Connect an Instagram account first."));
-    if (triggerScope === "specific" && !postId)
-      return setError(t("Pick a post or reel to trigger the campaign."));
-    if (matchMode === "specific" && keywords.length === 0)
-      return setError(t("Add at least one keyword, or switch to any word."));
-    if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
-      return setError(t("Your opening DM needs a message and a button label."));
-
-    setSaving(true);
 
     const payload = {
       name: name.trim() || `Campaign for @${username}`,
@@ -431,6 +427,21 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
       isActive: activeValue,
     };
+
+    // Validate against shared Zod schema before submitting
+    const validation =
+      mode === "new"
+        ? validateCreateAutomation(payload)
+        : validateUpdateAutomation(payload);
+
+    if (!validation.success && validation.errors) {
+      const firstField = Object.keys(validation.errors)[0];
+      const firstError = validation.errors[firstField]?.[0];
+      setError(firstField && firstError ? `${firstField}: ${firstError}` : t("Failed to save campaign"));
+      return;
+    }
+
+    setSaving(true);
 
     try {
       const res =
