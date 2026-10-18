@@ -284,6 +284,37 @@ export async function getUserFollowStatus(
 }
 
 /**
+ * The handle behind an IGSID, for personalizing a message to someone who
+ * messaged the account. The messages and postbacks webhooks carry only the
+ * sender's id, unlike the comments webhook, which carries the username.
+ *
+ * Instagram answers this for anyone who has an open conversation with the
+ * account, which is exactly who arrives on those two paths. null when the
+ * handle cannot be read, so the caller falls back as before.
+ */
+export async function getUserUsername(
+  accessToken: string,
+  recipientId: string
+): Promise<string | null> {
+  const url = new URL(`${instagramGraphBase()}/${recipientId}`);
+  url.searchParams.set("fields", "username");
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data?.username === "string" && data.username
+      ? data.username
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A tappable web_url button in a DM button template. Instagram's button
  * template supports up to 3 buttons; titles are capped at 20 chars by Meta.
  */

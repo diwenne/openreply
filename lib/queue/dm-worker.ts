@@ -25,6 +25,7 @@ import {
   RateLimitError,
   TokenExpiredError,
   getUserFollowStatus,
+  resolveRecipientName,
   sendCommentReply,
   sendDirectMessage,
   sendDirectMessageWithButton,
@@ -937,13 +938,6 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       return;
   }
 
-  // Personalize {username} from the opening DM log for this user, if present.
-  const openingLog = await prisma.dmLog.findFirst({
-    where: { automationId: automation.id, commenterId: userId },
-    select: { commenterName: true },
-  });
-  const commenterName = openingLog?.commenterName ?? null;
-
   let accessToken: InstagramContext;
   try {
     accessToken = await createInstagramContext(
@@ -953,6 +947,13 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   } catch {
     return;
   }
+
+  // Personalize {username}. The postback carries only the tapper's IGSID.
+  const commenterName = await resolveRecipientName({
+    context: accessToken,
+    workspaceId: automation.workspaceId,
+    recipientId: userId,
+  });
 
   const operationId = createHash("sha256")
     .update(JSON.stringify([
@@ -1387,13 +1388,13 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       continue;
     }
 
-    // Reuse a name captured on an earlier interaction so {username} still
-    // renders — the messages webhook carries only the sender's IGSID.
-    const priorLog = await prisma.dmLog.findFirst({
-      where: { automationId: automation.id, commenterId: senderId },
-      select: { commenterName: true },
+    // Personalize {username}. The messages webhook carries only the sender's
+    // IGSID, so the handle is recovered from an earlier send or read live.
+    const commenterName = await resolveRecipientName({
+      context: accessToken,
+      workspaceId: automation.workspaceId,
+      recipientId: senderId,
     });
-    const commenterName = priorLog?.commenterName ?? null;
 
     // Follow gate: anyone not confirmed as a follower gets the prompt instead of
     // the link, with the same `followcheck:` button that re-verifies on tap.
