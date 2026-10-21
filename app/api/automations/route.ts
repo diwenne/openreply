@@ -92,6 +92,7 @@ const createAutomationSchema = z
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
+  instagramAccountId: z.string().min(1).optional(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
@@ -490,6 +491,23 @@ export async function PATCH(request: NextRequest) {
     secondaryButtonLabel,
     ...automationData
   } = parsed.data;
+
+  // Moving a campaign to another account: it must be one of this workspace's.
+  if (
+    automationData.instagramAccountId !== undefined &&
+    automationData.instagramAccountId !== existing.instagramAccountId
+  ) {
+    const account = await prisma.instagramAccount.findFirst({
+      where: { id: automationData.instagramAccountId, workspaceId },
+      select: { id: true },
+    });
+    if (!account) {
+      return NextResponse.json(
+        { success: false, error: "Instagram account not found" },
+        { status: 404 }
+      );
+    }
+  }
 
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.
