@@ -8,7 +8,7 @@
 #             the `@/*` path alias tsx resolves at runtime)
 #   - cron:   `sh scripts/cron.sh` → the scheduler for /api/cron, which nothing
 #             runs off Vercel (see docs/deploy-dokploy.md). It needs scripts/
-#             in the image and wget on PATH; node:20-slim ships neither.
+#             in the image and wget on PATH; node:24-slim ships neither.
 #
 # next.config.ts does not set `output: "standalone"`, so `next start` already
 # requires the full node_modules tree at runtime — there is no slimmer
@@ -18,7 +18,7 @@
 # `@/lib/...` imports, because tsx has no tsconfig to resolve the alias
 # against, and no app/generated/prisma to import from).
 
-FROM node:20-slim AS build
+FROM node:24.22.1-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -29,11 +29,11 @@ COPY . .
 # generates app/generated/prisma AND compiles .next/ in one step.
 RUN npm run build
 
-FROM node:20-slim AS runner
+FROM node:24.22.1-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# scripts/cron.sh calls the /api/cron routes with wget, which node:20-slim does
+# scripts/cron.sh calls the /api/cron routes with wget, which node:24-slim does
 # not include.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ca-certificates \

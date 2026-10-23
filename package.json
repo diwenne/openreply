@@ -15,14 +15,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.2",
+    "@auth/prisma-adapter": "^2.11.3",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@vercel/analytics": "^2.0.1",
     "bullmq": "^5.76.4",
     "ioredis": "^5.10.1",
-    "next": "^16.2.6",
-    "next-auth": "^5.0.0-beta.31",
+    "next": "^16.4.1",
+    "next-auth": "^5.0.0-beta.32",
     "nodemailer": "^7.0.13",
     "pg": "^8.20.0",
     "react": "19.2.4",
@@ -32,18 +32,21 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.19.2",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.4.1",
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.1",
     "typescript": "^5",
     "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": "^24.22.1"
   }
 }

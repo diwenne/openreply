@@ -16,26 +16,20 @@ Since everything runs on the same Dokploy server, you don't need the "public vs 
 
 ## Gotcha #1 — Node version
 
-The repo doesn't pin a Node version, so Nixpacks (Dokploy's default build system) will default to an old version — too old for this project's dependencies (Prisma 7 and Next.js 16 both require Node 20.19+, 22.12+, or 24+).
+The app needs Node **24.22.1 or newer** (`engines.node` in `package.json`). Older runtimes are exposed to CVE-2026-111497, a remote code execution bug in Node's Brotli decoder that the built-in `fetch` reaches by default. Node 20 is end-of-life and will not get the fix, and on the 22 line only 22.23.4+ has it.
 
-Depending on which Nixpacks version your Dokploy instance ships, you may also find:
-- Requesting Node 22 via `NIXPACKS_NODE_VERSION=22` resolves to a patch (e.g. 22.11.0) just below Prisma's 22.12 minimum
-- Requesting Node 24 fails outright with `undefined variable 'nodejs_24'`, if the pinned Nix package snapshot predates Node 24's availability
+Nixpacks (Dokploy's default build system) reads the major version from `engines.node` and resolves it from whatever Nix package snapshot it ships, which typically lags security releases by weeks. The snapshot this guide used to recommend (`51ad838b…`, Node 22.13.1) is vulnerable, and it has no `nodejs_24` at all, so with `engines.node` on 24 the build fails with `undefined variable 'nodejs_24'`.
 
-**Fix:** add a `nixpacks.toml` file to the repo root to pin a newer, known-good Nix package snapshot:
+**Fix:** add a `nixpacks.toml` to the repo root that pins a Nix package snapshot whose `nodejs_24` is **24.22.1 or newer** (check the version at [search.nixos.org](https://search.nixos.org/packages?query=nodejs_24) before picking the commit):
 
 ```toml
 [phases.setup]
-nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
+nixpkgsArchive = "<nixpkgs commit with nodejs_24 >= 24.22.1>"
 ```
 
-This snapshot provides Node 22.13.1, which satisfies Prisma's requirement. Then set:
+`NIXPACKS_NODE_VERSION` is no longer needed — remove it if an earlier setup set it.
 
-```
-NIXPACKS_NODE_VERSION=22
-```
-
-as an environment variable on both the web app and worker app in Dokploy.
+Alternatively, set the **Build Type** of both apps to **Dockerfile**: the repo's `Dockerfile` pins `node:24.22.1-slim`, so the runtime no longer depends on the Nix snapshot. The Nixpacks build/start variables from Gotcha #2 do not apply to that build type, so the start commands (`prisma migrate deploy` for the web app, `npm run worker` for the worker) have to be set as the container command instead.
 
 ## Gotcha #2 — No dedicated "Build Command" field
 
@@ -107,7 +101,7 @@ when most of the comments arrive.
 1. Fork this repo.
 2. In Dokploy: **Create → Database → PostgreSQL** and **Create → Database → Redis**. Note their internal service hostnames.
 3. In Dokploy: **Create → Application**, connect your fork, `main` branch. This is the web app.
-4. Add the `nixpacks.toml` file (Gotcha #1) to your fork's root, and set the environment variables from Gotchas #1 and #2 (web app version) plus the standard variables from `.env.example` — pointing `DATABASE_URL` and `REDIS_URL` at the internal hostnames from step 2.
+4. Add the `nixpacks.toml` file (Gotcha #1) to your fork's root, and set the environment variables from Gotcha #2 (web app version) plus the standard variables from `.env.example` — pointing `DATABASE_URL` and `REDIS_URL` at the internal hostnames from step 2.
 5. Assign a domain to the web app only (not the worker) in Dokploy's Domains section, container port `3000`. This becomes your `NEXTAUTH_URL`.
 6. Repeat step 3 for a second Application — this is the worker. Use the worker's build/start commands from Gotcha #2, and the same full set of environment variables as the web app, especially `DATABASE_URL`, `REDIS_URL`, and `ENCRYPTION_KEY` (these three must match exactly between both apps, or DM sends will fail to decrypt).
 7. Deploy both apps.
