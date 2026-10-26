@@ -71,7 +71,7 @@ beforeEach(() => {
   state.eval.mockResolvedValue(1);
   state.workspace.findUnique.mockResolvedValue({ id: "ws" });
   state.instagramAccount.findFirst.mockImplementation(async ({ where }: { where: { workspaceId: string; id?: string } }) =>
-    where.workspaceId === "ws" && (!where.id || where.id === "acc") ? { id: "acc", workspaceId: "ws", username: "autoboost", provider: "META", accessToken: "enc", instagramId: "1", zernioAccountId: null } : null);
+    where.workspaceId === "ws" && (!where.id || where.id === "acc") ? { id: "acc", workspaceId: "ws", username: "example_account", provider: "META", accessToken: "enc", instagramId: "1", zernioAccountId: null } : null);
   state.automation.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "new", ...data }));
   state.automation.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "c1", ...data }));
   state.automation.delete.mockResolvedValue({ id: "c1" });
@@ -244,7 +244,7 @@ describe("reading posts and DM logs", () => {
   it("lists posts with an allowlist and never the token", async () => {
     const result = await callTool(ctx(READ), "list_posts", { limit: 5 });
     expect(state.media).toHaveBeenCalledWith({ context: { provider: "META", accessToken: "plain" }, limit: 5 });
-    expect(result).toEqual({ instagramAccountId: "acc", username: "autoboost", posts: [{ id: "p1", caption: "Hola", mediaType: "VIDEO", isReel: true, permalink: "https://instagram.com/reel/x", timestamp: "2026-10-01T00:00:00Z", likeCount: null, commentsCount: null }] });
+    expect(result).toEqual({ instagramAccountId: "acc", username: "example_account", posts: [{ id: "p1", caption: "Hola", mediaType: "VIDEO", isReel: true, permalink: "https://instagram.com/reel/x", timestamp: "2026-10-01T00:00:00Z", likeCount: null, commentsCount: null }] });
     expect(JSON.stringify(result)).not.toMatch(/plain|enc|cdn/);
   });
 
