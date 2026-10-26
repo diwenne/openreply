@@ -1,18 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n/provider";
+import { SERVICE_SCOPES } from "@/lib/integrations/scopes";
 
-type Key = { id: string; name: string; expiresAt: string; revokedAt: string | null };
+type Scope = typeof SERVICE_SCOPES[number];
+type Key = { id: string; name: string; scopes: string[]; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null };
 
 export default function IntegrationsPage() {
   const { t, locale } = useI18n();
   const [keys, setKeys] = useState<Key[]>([]);
   const [name, setName] = useState("");
   const [days, setDays] = useState(30);
+  const [canWrite, setCanWrite] = useState(false);
+  const [canActivate, setCanActivate] = useState(false);
   const [token, setToken] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const scopeLabels: Record<Scope, string> = {
+    "campaigns:read": t("Read campaigns, posts and DM logs"),
+    "campaigns:write": t("Create, edit, pause and delete campaigns (new campaigns start paused)"),
+    "campaigns:activate": t("Turn campaigns on, so they start sending messages"),
+  };
 
   async function load() {
     const response = await fetch("/api/integrations/keys");
@@ -24,12 +34,18 @@ export default function IntegrationsPage() {
   useEffect(() => { void Promise.resolve().then(load).catch(e => setNotice(e.message)); }, []);
 
   async function create() {
-    if (!window.confirm(t("Create a read-only workspace key for {days} days? Anyone with this key can read your campaigns.", { days }))) return;
+    const scopes: Scope[] = ["campaigns:read", ...(canWrite ? ["campaigns:write" as const] : []), ...(canActivate ? ["campaigns:activate" as const] : [])];
+    const warning = canActivate
+      ? t("Create a key for {days} days that can turn campaigns on? Anyone with this key can make your account send messages.", { days })
+      : canWrite
+        ? t("Create a key for {days} days that can change campaigns? Anyone with this key can edit and delete your campaigns.", { days })
+        : t("Create a read-only workspace key for {days} days? Anyone with this key can read your campaigns.", { days });
+    if (!window.confirm(warning)) return;
     setBusy(true); setToken(""); setNotice("");
     try {
       const response = await fetch("/api/integrations/keys", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, days, scopes: ["campaigns:read"] }),
+        body: JSON.stringify({ name, days, scopes }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -51,9 +67,11 @@ export default function IntegrationsPage() {
     finally { setBusy(false); }
   }
 
+  const origin = useSyncExternalStore(() => () => undefined, () => window.location.origin, () => "");
+
   return <div className="mx-auto max-w-4xl space-y-6 p-6">
     <h1 className="text-2xl font-semibold">{t("API & MCP")}</h1>
-    <p className="text-muted">{t("Workspace-scoped, read-only keys. No key can modify campaigns or send messages. Only admins and owners can manage keys.")}</p>
+    <p className="text-muted">{t("Workspace-scoped keys for the API and MCP server. Keys are read-only unless you allow more. Only admins and owners can manage keys.")}</p>
     {notice && <p role="status">{notice}</p>}
     <section className="space-y-3 rounded border border-border p-4">
       <label className="block">{t("Key name")}<input maxLength={100} disabled={busy} className="w-full rounded border border-border p-2" value={name} onChange={e => setName(e.target.value)} /></label>
@@ -61,6 +79,16 @@ export default function IntegrationsPage() {
         {[30, 60, 90].map(value => <option key={value} value={value}>{t("{days} days", { days: value })}</option>)}
       </select></label>
       <p className="text-sm text-muted">{t("Applies only to new keys. Existing expiration dates do not change.")}</p>
+      <fieldset className="space-y-2">
+        <legend className="font-medium">{t("Permissions")}</legend>
+        <label className="flex items-start gap-2"><input type="checkbox" checked disabled className="mt-1" />
+          <span><code>campaigns:read</code> · {scopeLabels["campaigns:read"]}</span></label>
+        <label className="flex items-start gap-2"><input type="checkbox" disabled={busy} checked={canWrite} onChange={e => setCanWrite(e.target.checked)} className="mt-1" />
+          <span><code>campaigns:write</code> · {scopeLabels["campaigns:write"]}</span></label>
+        <label className="flex items-start gap-2"><input type="checkbox" disabled={busy} checked={canActivate} onChange={e => setCanActivate(e.target.checked)} className="mt-1" />
+          <span><code>campaigns:activate</code> · {scopeLabels["campaigns:activate"]}</span></label>
+        <p className="text-sm text-muted">{t("Editing a live campaign also needs campaigns:activate. Without it, a key has to pause the campaign first.")}</p>
+      </fieldset>
       <button disabled={busy || !name.trim()} onClick={create} className="rounded bg-accent px-4 py-2 text-white disabled:opacity-50">{t("Create key for {days} days", { days })}</button>
       {token && <div role="status" className="space-y-2">
         <p>{t("Shown once. Store securely; never put keys in URLs, screenshots or GitHub.")}</p>
@@ -71,13 +99,16 @@ export default function IntegrationsPage() {
     </section>
     <section className="space-y-3">{keys.map(key => <div key={key.id} className="rounded border border-border p-4">
       <strong>{key.name}</strong>
-      <p className="text-sm">campaigns:read · {t("Expires: {date}", { date: new Date(key.expiresAt).toLocaleDateString(locale) })}</p>
+      <p className="text-sm">{key.scopes.join(" · ")}</p>
+      <p className="text-sm">{t("Expires: {date}", { date: new Date(key.expiresAt).toLocaleDateString(locale) })}
+        {key.lastUsedAt && <> · {t("Last used: {date}", { date: new Date(key.lastUsedAt).toLocaleString(locale) })}</>}</p>
       {key.revokedAt ? <span>{t("Revoked")}</span> : <button disabled={busy} onClick={() => revoke(key)} className="text-red-500">{t("Revoke key")}</button>}
     </div>)}</section>
     <section className="space-y-2 text-sm">
       <h2 className="font-semibold">{t("Connection")}</h2>
-      <p>MCP: <code>/api/mcp</code> · REST: <code>/api/v1/campaigns</code></p>
+      <p>MCP: <code>{origin}/api/mcp</code> · REST: <code>{origin}/api/v1/campaigns</code></p>
       <p>{t("Streamable HTTP with an Authorization: Bearer header. This server does not provide OAuth; use a client that supports custom headers.")}</p>
+      <pre className="overflow-x-auto rounded border border-border p-2 text-xs">{`claude mcp add --transport http openreply ${origin}/api/mcp --header "Authorization: Bearer <key>"`}</pre>
       <p>{t("Campaign lists are limited to 100. Use get_campaign for complete settings and destination links; clicks are raw requests, not unique recipients.")}</p>
     </section>
   </div>;

@@ -1,5 +1,5 @@
 export class ApiError extends Error {
-  constructor(message: string, public status = 400) { super(message); }
+  constructor(message: string, public status = 400, public details?: unknown) { super(message); }
 }
 
 /** Bound streamed bodies too: Content-Length alone is client controlled. */
@@ -36,7 +36,9 @@ export function checkOrigin(request: Request) {
 
 export function apiError(error: unknown) {
   const status = error instanceof ApiError ? error.status : 500;
-  return Response.json({ error: status === 500 ? "Internal error" : (error as Error).message }, {
+  if (status === 500) console.error("[Integrations] Unexpected error:", error instanceof Error ? error.message : "unknown");
+  const details = error instanceof ApiError ? error.details : undefined;
+  return Response.json({ error: status === 500 ? "Internal error" : (error as Error).message, ...(details ? { details } : {}) }, {
     status, headers: { "Cache-Control": "no-store" },
   });
 }

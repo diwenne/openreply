@@ -304,7 +304,6 @@
   "API & MCP": "API 與 MCP",
   "Create a read-only workspace key for {days} days? Anyone with this key can read your campaigns.": "建立有效期為 {days} 天的工作區唯讀金鑰？持有此金鑰的人都能讀取您的行銷活動。",
   "Revoke this key? Connected clients will lose access immediately.": "撤銷此金鑰？已連線的用戶端將立即失去存取權限。",
-  "Workspace-scoped, read-only keys. No key can modify campaigns or send messages. Only admins and owners can manage keys.": "金鑰僅能唯讀存取所屬工作區，無法修改行銷活動或傳送訊息。只有管理員與擁有者能管理金鑰。",
   "Key name": "金鑰名稱",
   "Key lifetime": "金鑰有效期",
   "{days} days": "{days} 天",
@@ -465,5 +464,14 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "Read campaigns, posts and DM logs": "讀取行銷活動、貼文與私訊紀錄",
+  "Create, edit, pause and delete campaigns (new campaigns start paused)": "建立、編輯、暫停與刪除行銷活動（新活動預設為暫停）",
+  "Turn campaigns on, so they start sending messages": "啟用行銷活動，使其開始傳送訊息",
+  "Create a key for {days} days that can turn campaigns on? Anyone with this key can make your account send messages.": "建立有效期為 {days} 天、可啟用行銷活動的金鑰？持有此金鑰的人都能讓您的帳號傳送訊息。",
+  "Create a key for {days} days that can change campaigns? Anyone with this key can edit and delete your campaigns.": "建立有效期為 {days} 天、可修改行銷活動的金鑰？持有此金鑰的人都能編輯與刪除您的行銷活動。",
+  "Workspace-scoped keys for the API and MCP server. Keys are read-only unless you allow more. Only admins and owners can manage keys.": "用於 API 與 MCP 伺服器、僅限所屬工作區的金鑰。除非您另行允許，金鑰皆為唯讀。只有管理員與擁有者能管理金鑰。",
+  "Permissions": "權限",
+  "Editing a live campaign also needs campaigns:activate. Without it, a key has to pause the campaign first.": "編輯進行中的行銷活動也需要 campaigns:activate。沒有此權限時，金鑰須先暫停該活動。",
+  "Last used: {date}": "上次使用：{date}"
 }

@@ -1,17 +1,13 @@
-import { z } from "zod";
-import { authenticateService } from "@/lib/integrations/auth";
-import { getCampaign, getCampaignStats, listCampaigns } from "@/lib/integrations/campaigns";
-import { apiError, ApiError, checkOrigin } from "@/lib/integrations/http";
+import { query, restTool } from "@/lib/integrations/rest";
 
 export async function GET(request: Request) {
-  try {
-    checkOrigin(request);
-    const context = await authenticateService(request);
-    const url = new URL(request.url);
-    const id = url.searchParams.get("id");
-    if (id !== null && !z.string().min(1).max(100).safeParse(id).success) throw new ApiError("Invalid campaign id");
-    if (url.searchParams.has("stats") && !id) throw new ApiError("Campaign id required for stats");
-    const data = id ? url.searchParams.has("stats") ? await getCampaignStats(context, id) : await getCampaign(context, id) : await listCampaigns(context);
-    return Response.json({ data }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) { return apiError(error); }
+  const id = query(request, "id");
+  const stats = new URL(request.url).searchParams.has("stats");
+  if (stats && !id) return Response.json({ error: "Campaign id required for stats" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  if (!id) return restTool(request, "list_campaigns");
+  return restTool(request, stats ? "get_campaign_stats" : "get_campaign", () => ({ id }));
+}
+
+export async function POST(request: Request) {
+  return restTool(request, "create_campaign", body => body, { body: true, status: 201 });
 }

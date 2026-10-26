@@ -34,7 +34,7 @@ try {
     trackedLinks: { create: { workspaceId, slug: suffix, destinationUrl: "https://example.test/guide", label: "Guide", position: 0 } } } });
   const serviceKey = await db.serviceKey.create({ data: { workspaceId, name: "HTTP fixture", tokenHash: hashServiceToken(token), scopes: ["campaigns:read"], expiresAt: new Date(Date.now() + 86400000) } });
   assert.equal((await rpc("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "http-test", version: "1" } })).protocolVersion, "2025-11-25");
-  assert.equal((await rpc("tools/list")).tools.length, 3);
+  assert.equal((await rpc("tools/list")).tools.length, 6);
   const detail = JSON.parse((await rpc("tools/call", { name: "get_campaign", arguments: { id: campaign.id } })).content[0].text);
   assert.equal(detail.trackedDestinationUrl, "https://example.test/guide");
   assert.equal(detail.secondaryDestinationUrl, null);
@@ -47,18 +47,30 @@ try {
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 200);
   assert.equal((await fetch(`${base}/api/v1/campaigns`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/campaigns?id=not-this-workspace`, { headers })).status, 404);
-  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 405);
+  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 403);
   assert.equal((await rpc("tools/call", { name: "create_draft", arguments: {} })).isError, true);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers: { ...headers, origin: "https://evil.test" }, body: "{}" })).status, 403);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers, body: JSON.stringify({ padding: "x".repeat(65536) }) })).status, 413);
   assert.equal((await db.automation.findUniqueOrThrow({ where: { id: campaign.id } })).isActive, false);
+  // Write key: creates paused, edits, may not activate, deletes once paused.
+  await db.serviceKey.update({ where: { id: serviceKey.id }, data: { scopes: ["campaigns:read", "campaigns:write"] } });
+  assert.equal((await rpc("tools/list")).tools.length, 10);
+  const created = await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: JSON.stringify({ name: "HTTP draft", keywords: ["INFO"], matchAnyPost: true, dmMessage: "Draft" }) });
+  assert.equal(created.status, 201);
+  const draft = (await created.json()).data;
+  assert.equal(draft.isActive, false);
+  assert.equal((await fetch(`${base}/api/v1/campaigns/${draft.id}`, { method: "PATCH", headers, body: JSON.stringify({ dmMessage: "Edited" }) })).status, 200);
+  assert.equal((await fetch(`${base}/api/v1/campaigns/${draft.id}/activate`, { method: "POST", headers })).status, 403);
+  assert.equal((await db.automation.findUniqueOrThrow({ where: { id: draft.id } })).isActive, false);
+  assert.equal((await fetch(`${base}/api/v1/campaigns/${draft.id}/logs`, { headers })).status, 200);
+  assert.equal((await fetch(`${base}/api/v1/campaigns/${draft.id}`, { method: "DELETE", headers })).status, 200);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { scopes: [] } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 403);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { revokedAt: new Date() } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 401);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { revokedAt: null, expiresAt: new Date(0) } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 401);
-  console.log("PASS: real local HTTP MCP/REST, DB/Redis authentication, scoped details, boundaries, revocation and expiry; no messages sent.");
+  console.log("PASS: real local HTTP MCP/REST, DB/Redis authentication, scopes, paused creation, boundaries, revocation and expiry; no messages sent.");
 } finally {
   await db.user.deleteMany({ where: { id: ownerId } });
   await db.$disconnect();

@@ -84,6 +84,44 @@ describe.skipIf(!databaseUrl)("read-only integrations on real PostgreSQL", () =>
     expect((await getCampaign(context, "campaign")).trackedDestinationUrl).toBe("https://example.test/b");
     expect(await getCampaign({ ...context, workspaceId: "other" }, "foreign")).toMatchObject({ trackedLinks: [], trackedDestinationUrl: null, secondaryDestinationUrl: null });
   });
+  it("creates paused, edits, activates and deletes through the dashboard's rules", async () => {
+    const writer = { ...context, scopes: ["campaigns:read", "campaigns:write"] };
+    const owner = { ...context, scopes: ["campaigns:read", "campaigns:write", "campaigns:activate"] };
+    const created = await callTool(writer, "create_campaign", {
+      name: "API", keywords: ["INFO"], matchAnyPost: true, dmMessage: "Hola {username}",
+      trackedDestinationUrl: "https://example.test/api",
+    }) as { id: string; isActive: boolean; trackedDestinationUrl: string | null };
+    expect(created).toMatchObject({ isActive: false, trackedDestinationUrl: "https://example.test/api" });
+    const stored = await state.db.automation.findUniqueOrThrow({ where: { id: created.id }, include: { trackedLinks: true } });
+    expect(stored).toMatchObject({ workspaceId: "workspace", instagramAccountId: "account_workspace", isActive: false });
+    expect(stored.trackedLinks.map(link => link.workspaceId)).toEqual(["workspace"]);
+
+    await callTool(writer, "update_campaign", { id: created.id, dmMessage: "Nuevo", secondaryDestinationUrl: "https://example.test/two", secondaryButtonLabel: "Dos" });
+    expect(await getCampaign(context, created.id)).toMatchObject({ dmMessage: "Nuevo", secondaryDestinationUrl: "https://example.test/two", secondaryButtonLabel: "Dos" });
+
+    await expect(callTool(writer, "activate_campaign", { id: created.id })).rejects.toMatchObject({ status: 403 });
+    await callTool(owner, "activate_campaign", { id: created.id });
+    expect((await state.db.automation.findUniqueOrThrow({ where: { id: created.id } })).isActive).toBe(true);
+    await expect(callTool(writer, "update_campaign", { id: created.id, dmMessage: "Sin permiso" })).rejects.toMatchObject({ status: 403 });
+    await expect(callTool(writer, "delete_campaign", { id: created.id })).rejects.toMatchObject({ status: 409 });
+
+    await callTool(writer, "pause_campaign", { id: created.id });
+    expect(await callTool(writer, "delete_campaign", { id: created.id })).toEqual({ deleted: true });
+    expect(await state.db.automation.findUnique({ where: { id: created.id } })).toBeNull();
+    expect(await state.db.trackedLink.count({ where: { automationId: created.id } })).toBe(0);
+  });
+  it("never writes to another workspace", async () => {
+    const owner = { ...context, scopes: ["campaigns:read", "campaigns:write", "campaigns:activate"] };
+    const before = await state.db.automation.findUniqueOrThrow({ where: { id: "foreign" } });
+    for (const [name, args] of [["update_campaign", { id: "foreign", dmMessage: "x" }], ["activate_campaign", { id: "foreign" }],
+      ["pause_campaign", { id: "foreign" }], ["delete_campaign", { id: "foreign" }], ["list_dm_logs", { id: "foreign" }]] as const) {
+      await expect(callTool(owner, name, args)).rejects.toMatchObject({ status: 404 });
+    }
+    await expect(callTool(owner, "create_campaign", { name: "x", matchAnyWord: true, matchAnyPost: true, dmMessage: "x", instagramAccountId: "account_other" }))
+      .rejects.toMatchObject({ status: 400 });
+    expect(await state.db.automation.findUniqueOrThrow({ where: { id: "foreign" } })).toEqual(before);
+    expect(await state.db.automation.count({ where: { workspaceId: "other" } })).toBe(1);
+  });
   it("stores only hashed keys with fixed independent expiry and workspace cascade", async () => {
     const oldExpiry = new Date("2099-01-01");
     await state.db.serviceKey.create({ data: { id: "old", workspaceId: "workspace", name: "Old", tokenHash: hashServiceToken(newServiceToken()), scopes: ["campaigns:read"], expiresAt: oldExpiry } });
