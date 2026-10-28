@@ -44,6 +44,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - Workspaces and roles. Owner, admin, and member roles with invite links, useful if you run this for clients.
 - Campaign templates. Start from a preset instead of a blank form.
 - English, Traditional Chinese and Brazilian Portuguese interface, with a saved language preference. See [interface languages](docs/localization.md).
+- API and MCP server to manage campaigns from tools like Claude Code, with workspace-scoped revocable keys (30/60/90 days). Keys are read-only by default; writing and activating are separate permissions, and campaigns created with a key start paused. See [integrations](docs/integrations.md).
 - Inbox. Read your Instagram DM conversations and reply from the dashboard, inside Meta's 24-hour messaging window. Cached so it loads instantly on repeat visits.
 - DM logs. Every send, skip, and failure is logged with a reason.
 - Self-comment filtering. Your own comments never trigger a reply, since Meta rejects DMing yourself anyway.
