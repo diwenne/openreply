@@ -25,6 +25,7 @@ import {
   RateLimitError,
   TokenExpiredError,
   getUserFollowStatus,
+  resolveRecipientName,
   sendCommentReply,
   sendDirectMessage,
   sendDirectMessageWithButton,
@@ -51,6 +52,7 @@ import {
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
+import { hashRecipientId } from "@/lib/tracking/server";
 
 import { ZernioApiError } from "@/lib/zernio/client";
 
@@ -147,10 +149,11 @@ type WorkerTrackedLink = {
  */
 function buildLinkButtons(
   trackedLinks: WorkerTrackedLink[],
-  primaryLabel: string | null
+  primaryLabel: string | null,
+  recipientToken: string
 ): { title: string; url: string }[] {
   return trackedLinks.slice(0, 3).map((link, index) => ({
-    url: buildTrackedUrl(link.slug),
+    url: buildTrackedUrl(link.slug, undefined, recipientToken),
     title:
       (index === 0 ? primaryLabel : link.label) || link.label || "Open link",
   }));
@@ -165,14 +168,19 @@ function buildInlineLinkFallback(
   message: string,
   commenterName: string | null | undefined,
   trackedLinks: WorkerTrackedLink[],
-  bodyText: string
+  bodyText: string,
+  recipientToken: string
 ): string {
   const base =
-    renderMessageWithTracking({ message, commenterName, trackedLinks }) ||
-    bodyText;
+    renderMessageWithTracking({
+      message,
+      commenterName,
+      trackedLinks,
+      recipientToken,
+    }) || bodyText;
   const extraUrls = trackedLinks
     .slice(1)
-    .map((link) => buildTrackedUrl(link.slug));
+    .map((link) => buildTrackedUrl(link.slug, undefined, recipientToken));
   return extraUrls.length > 0 ? `${base}\n${extraUrls.join("\n")}` : base;
 }
 
@@ -221,9 +229,11 @@ async function sendRevealDirectMessage({
       message: automation.dmMessage,
       commenterName,
     }) || "Here's your link:";
+  const recipientToken = hashRecipientId(userId);
   const buttons = buildLinkButtons(
     automation.trackedLinks,
-    automation.linkButtonLabel
+    automation.linkButtonLabel,
+    recipientToken
   );
 
   try {
@@ -252,7 +262,8 @@ async function sendRevealDirectMessage({
           automation.dmMessage,
           commenterName,
           automation.trackedLinks,
-          bodyText
+          bodyText,
+          recipientToken
         ),
       });
     } catch (fallbackError) {
@@ -695,7 +706,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           }) || "Here's your link:";
         const buttons = buildLinkButtons(
           automation.trackedLinks,
-          automation.linkButtonLabel
+          automation.linkButtonLabel,
+          hashRecipientId(commenterId)
         );
 
         try {
@@ -721,7 +733,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             automation.dmMessage,
             commenterName,
             automation.trackedLinks,
-            bodyText
+            bodyText,
+            hashRecipientId(commenterId)
           );
           try {
             await sendPrivateReply({
@@ -740,6 +753,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          recipientToken: hashRecipientId(commenterId),
         });
         await sendPrivateReply({
           context: accessToken,
@@ -849,13 +863,16 @@ async function sendFollowRecheckAck({
       "NX"
     );
     if (first !== "OK") return;
-    await sendPostbackOnce({
-      // Its own id: the tap's id is claimed later by the link or prompt that
-      // the re-check sends, and claiming it here would suppress that message.
-      operationId: operationId ? `${operationId}:ack` : null,
-      send: () =>
-        sendDirectMessage({ context, instagramAccountId, userId, message }),
-    });
+    const send = () =>
+      sendDirectMessage({ context, instagramAccountId, userId, message });
+    // Its own id: the tap's id is claimed later by the link or prompt that
+    // the re-check sends, and claiming it here would suppress that message.
+    // Without an id the Redis NX above is the only dedupe.
+    if (operationId) {
+      await sendPostbackOnce({ operationId: `${operationId}:ack`, send });
+    } else {
+      await send();
+    }
   } catch (error) {
     console.log(
       "[DM Worker] Failed to send follow re-check acknowledgement:",
@@ -921,13 +938,6 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       return;
   }
 
-  // Personalize {username} from the opening DM log for this user, if present.
-  const openingLog = await prisma.dmLog.findFirst({
-    where: { automationId: automation.id, commenterId: userId },
-    select: { commenterName: true },
-  });
-  const commenterName = openingLog?.commenterName ?? null;
-
   let accessToken: InstagramContext;
   try {
     accessToken = await createInstagramContext(
@@ -937,6 +947,13 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   } catch {
     return;
   }
+
+  // Personalize {username}. The postback carries only the tapper's IGSID.
+  const commenterName = await resolveRecipientName({
+    context: accessToken,
+    workspaceId: automation.workspaceId,
+    recipientId: userId,
+  });
 
   const operationId = createHash("sha256")
     .update(JSON.stringify([
@@ -1371,13 +1388,13 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       continue;
     }
 
-    // Reuse a name captured on an earlier interaction so {username} still
-    // renders — the messages webhook carries only the sender's IGSID.
-    const priorLog = await prisma.dmLog.findFirst({
-      where: { automationId: automation.id, commenterId: senderId },
-      select: { commenterName: true },
+    // Personalize {username}. The messages webhook carries only the sender's
+    // IGSID, so the handle is recovered from an earlier send or read live.
+    const commenterName = await resolveRecipientName({
+      context: accessToken,
+      workspaceId: automation.workspaceId,
+      recipientId: senderId,
     });
-    const commenterName = priorLog?.commenterName ?? null;
 
     // Follow gate: anyone not confirmed as a follower gets the prompt instead of
     // the link, with the same `followcheck:` button that re-verifies on tap.

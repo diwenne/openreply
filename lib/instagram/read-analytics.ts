@@ -22,6 +22,22 @@ export async function getUserFollowStatus({
   }
 }
 
+/**
+ * The handle behind an IGSID. Zernio exposes no equivalent lookup, so a Zernio
+ * account gets null and the message renders its fallback, as it does today.
+ */
+export async function getRecipientUsername({
+  context,
+  recipientId,
+}: {
+  context: InstagramContext;
+  recipientId: string;
+}): Promise<string | null> {
+  if (context.provider === "META")
+    return meta.getUserUsername(context.accessToken, recipientId);
+  return null;
+}
+
 export async function getMediaInsights({
   context,
   mediaId,

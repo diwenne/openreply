@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
+import {
+  calculateCtr,
+  CLICK_ROW_SELECT,
+  countUniqueClicksBy,
+  normalizeTopKeywords,
+} from "@/lib/tracking/analytics";
 import { buildTrackedUrl } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import {
@@ -87,6 +92,7 @@ const createAutomationSchema = z
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
+  instagramAccountId: z.string().min(1).optional(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
@@ -180,16 +186,15 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  const [statusCounts, clickCounts, keywordCounts] = await Promise.all([
+  const [statusCounts, clickRows, keywordCounts] = await Promise.all([
     prisma.dmLog.groupBy({
       by: ["automationId", "status"],
       where: { workspaceId },
       _count: { _all: true },
     }),
-    prisma.linkClick.groupBy({
-      by: ["automationId"],
+    prisma.linkClick.findMany({
       where: { workspaceId },
-      _count: { _all: true },
+      select: CLICK_ROW_SELECT,
     }),
     prisma.dmLog.groupBy({
       by: ["automationId", "matchedKeyword"],
@@ -228,9 +233,10 @@ export async function GET(request: NextRequest) {
     if (row.status.startsWith("SKIPPED_")) item.skipped += count;
   }
 
-  for (const row of clickCounts) {
-    const item = analytics.get(row.automationId);
-    if (item) item.clicks = row._count._all;
+  const clickCounts = countUniqueClicksBy(clickRows, (row) => row.automationId);
+  for (const [automationId, clicks] of clickCounts) {
+    const item = analytics.get(automationId);
+    if (item) item.clicks = clicks;
   }
 
   for (const automation of automationsWithReports) {
@@ -485,6 +491,23 @@ export async function PATCH(request: NextRequest) {
     secondaryButtonLabel,
     ...automationData
   } = parsed.data;
+
+  // Moving a campaign to another account: it must be one of this workspace's.
+  if (
+    automationData.instagramAccountId !== undefined &&
+    automationData.instagramAccountId !== existing.instagramAccountId
+  ) {
+    const account = await prisma.instagramAccount.findFirst({
+      where: { id: automationData.instagramAccountId, workspaceId },
+      select: { id: true },
+    });
+    if (!account) {
+      return NextResponse.json(
+        { success: false, error: "Instagram account not found" },
+        { status: 404 }
+      );
+    }
+  }
 
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.

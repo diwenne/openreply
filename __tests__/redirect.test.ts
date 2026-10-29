@@ -63,6 +63,36 @@ describe("tracked link redirect route", () => {
     });
   });
 
+  it("stores a valid recipient token and ignores a malformed one", async () => {
+    mockPrisma.trackedLink.findUnique.mockResolvedValue({
+      id: "link_123",
+      workspaceId: "workspace_123",
+      automationId: "automation_123",
+      destinationUrl: "https://example.com/offer",
+      automation: { instagramAccountId: "instagram_account_123" },
+    });
+    mockPrisma.linkClick.create.mockResolvedValue({});
+    const token = "AbCdEfGhIjKlMnOpQrSt_-";
+
+    for (const [query, expected] of [
+      [`?r=${token}`, token],
+      ["?r=not-a-token", null],
+      ["", null],
+    ] as const) {
+      const response = await GET(
+        new Request(`https://manychat-alternative.com/r/abc123${query}`) as Parameters<
+          typeof GET
+        >[0],
+        { params: Promise.resolve({ slug: "abc123" }) }
+      );
+
+      expect(response.headers.get("location")).toBe("https://example.com/offer");
+      expect(mockPrisma.linkClick.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ recipientHash: expected }),
+      });
+    }
+  });
+
   it("redirects unknown slugs to the homepage without logging a click", async () => {
     mockPrisma.trackedLink.findUnique.mockResolvedValue(null);
 

@@ -12,6 +12,7 @@ const geist = localFont({
   weight: "100 900",
 });
 const GITHUB_URL = "https://github.com/diwenne/openreply";
+const SUPPORT_URL = "https://buymeacoffee.com/diwen";
 const SETUP_DOCS_URL = `${GITHUB_URL}/blob/main/docs/setup.md`;
 const ZERNIO_DOCS_URL = `${GITHUB_URL}/blob/main/docs/zernio.md`;
 
@@ -186,6 +187,9 @@ export default async function Home() {
           <nav aria-label="Main navigation">
             <a href="#how">How it works</a>
             <a href="#setup">Self-host it</a>
+            <a href={SUPPORT_URL} target="_blank" rel="noreferrer">
+              Buy me a coffee
+            </a>
             <a
               className="or-stars"
               href={GITHUB_URL}

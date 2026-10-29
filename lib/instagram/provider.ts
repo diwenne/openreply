@@ -16,3 +16,4 @@ export * from "./send-messages";
 export * from "./read-content";
 export * from "./read-inbox";
 export * from "./read-analytics";
+export * from "./recipient-name";

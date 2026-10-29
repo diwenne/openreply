@@ -11,7 +11,7 @@ const { mockPrisma } = vi.hoisted(() => ({
       count: vi.fn(),
     },
     linkClick: {
-      count: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -45,10 +45,29 @@ const baseAutomation = {
       id: "link_123",
       slug: "tracked_123",
       destinationUrl: "https://www.example.com/product",
-      _count: { clicks: 12 },
     },
   ],
 };
+
+// 14 clicks from 12 people: one recipient taps three times, and two older
+// clicks without a token are told apart by their IP hash.
+function click(index: number, recipientHash: string | null, ipHash: string | null) {
+  return {
+    id: `click_${index}`,
+    automationId: "automation_123",
+    trackedLinkId: "link_123",
+    recipientHash,
+    ipHash,
+    createdAt: new Date(),
+  };
+}
+const clickRows = [
+  ...Array.from({ length: 10 }, (_, i) => click(i, `recipient_${i}`, `ip_${i}`)),
+  click(10, "recipient_0", "ip_other"),
+  click(11, "recipient_0", "ip_0"),
+  click(12, null, "ip_legacy_a"),
+  click(13, null, "ip_legacy_b"),
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,7 +82,7 @@ beforeEach(() => {
       { matchedKeyword: "LINK", _count: { _all: 14 } },
       { matchedKeyword: "SHOP", _count: { _all: 6 } },
     ]);
-  mockPrisma.linkClick.count.mockResolvedValue(12);
+  mockPrisma.linkClick.findMany.mockResolvedValue(clickRows);
   mockPrisma.dmLog.findFirst.mockResolvedValue({
     dmSentAt: new Date("2026-05-20T12:00:00.000Z"),
     createdAt: new Date("2026-05-20T12:00:00.000Z"),
@@ -102,6 +121,7 @@ describe("campaign reports", () => {
       ],
     });
     expect(report?.daily).toHaveLength(7);
+    expect(report?.daily.at(-1)?.clicks).toBe(12);
     expect("dmMessage" in (report?.campaign ?? {})).toBe(false);
   });
 
