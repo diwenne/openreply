@@ -11,6 +11,26 @@ import { useEffect, useState } from "react";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatCard from "@/components/stat-card";
 import StatusBadge from "@/components/status-badge";
+import {
+  Rocket,
+  PaperPlaneTilt,
+  SkipForward,
+  XCircle,
+  CursorClick,
+  Percent,
+  ChartBar,
+  MagnifyingGlass,
+  Pulse,
+  CaretDown,
+  CaretUp,
+} from "@phosphor-icons/react";
+
+// Section header + stat card icons share this muted treatment so they read as
+// decoration, not as interactive elements.
+const ICON_CLASS = "text-muted shrink-0";
+
+// Recent Activity pager — this many rows shown before "Show more" is needed.
+const ACTIVITY_PAGE_SIZE = 10;
 
 interface DashboardStats {
   userName: string | null;
@@ -46,6 +66,10 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
+  // Recent Activity pager — show ACTIVITY_PAGE_SIZE rows at a time.
+  const [visibleActivityCount, setVisibleActivityCount] = useState(
+    ACTIVITY_PAGE_SIZE
+  );
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -64,6 +88,7 @@ export default function DashboardPage() {
 
   function handleAccountChange(accountId: string) {
     setLoading(true);
+    setVisibleActivityCount(ACTIVITY_PAGE_SIZE);
     setSelectedAccountId(accountId);
   }
 
@@ -119,19 +144,43 @@ export default function DashboardPage() {
         <StatCard
           label={t("Active Campaigns")}
           value={stats?.activeAutomations ?? 0}
+          icon={<Rocket size={16} weight="regular" className={ICON_CLASS} />}
         />
-        <StatCard label={t("DMs Sent")} value={stats?.dmsSentMonth ?? 0} />
-        <StatCard label={t("Skipped")} value={stats?.dmsSkippedMonth ?? 0} />
-        <StatCard label={t("Failed")} value={stats?.dmsFailedMonth ?? 0} />
-        <StatCard label={t("Clicks")} value={stats?.clicksThisMonth ?? 0} />
-        <StatCard label={t("CTR")} value={`${stats?.ctrThisMonth ?? 0}%`} />
+        <StatCard
+          label={t("DMs Sent")}
+          value={stats?.dmsSentMonth ?? 0}
+          icon={<PaperPlaneTilt size={16} weight="regular" className={ICON_CLASS} />}
+        />
+        <StatCard
+          label={t("Skipped")}
+          value={stats?.dmsSkippedMonth ?? 0}
+          icon={<SkipForward size={16} weight="regular" className={ICON_CLASS} />}
+        />
+        <StatCard
+          label={t("Failed")}
+          value={stats?.dmsFailedMonth ?? 0}
+          icon={<XCircle size={16} weight="regular" className={ICON_CLASS} />}
+        />
+        <StatCard
+          label={t("Clicks")}
+          value={stats?.clicksThisMonth ?? 0}
+          icon={<CursorClick size={16} weight="regular" className={ICON_CLASS} />}
+        />
+        <StatCard
+          label={t("CTR")}
+          value={`${stats?.ctrThisMonth ?? 0}%`}
+          icon={<Percent size={16} weight="regular" className={ICON_CLASS} />}
+        />
       </div>
 
-      {/* Chart + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 sm:gap-6">
+      {/* Chart + Top Keywords */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* 7-Day Chart */}
         <div className="lg:col-span-3 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-6">{t("DMs — Last 7 Days")}</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground mb-6">
+            <ChartBar size={16} weight="regular" className={ICON_CLASS} />
+            {t("DMs — Last 7 Days")}
+          </h2>
           <div className="flex items-end gap-1.5 h-40 sm:gap-2">
             {stats?.dailyDMs.map((day) => (
               <div key={label(day.date)} className="min-w-0 flex-1 h-full flex flex-col items-center gap-2">
@@ -155,7 +204,10 @@ export default function DashboardPage() {
 
         {/* Top Keywords */}
         <div className="lg:col-span-1 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Top Keywords")}</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground mb-4">
+            <MagnifyingGlass size={16} weight="regular" className={ICON_CLASS} />
+            {t("Top Keywords")}
+          </h2>
           <div className="space-y-3">
             {stats?.topKeywords.length === 0 && (
               <p className="text-sm text-muted py-8">{t("No keyword matches yet")}</p>
@@ -170,35 +222,61 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Recent Activity */}
-        <div className="lg:col-span-2 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Recent Activity")}</h2>
-          <div className="space-y-3 max-h-60 overflow-y-auto">
-            {stats?.recentLogs.length === 0 && (
-              <p className="text-sm text-muted text-center py-8">{t("No activity yet")}</p>
-            )}
-            {stats?.recentLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    @{log.commenterName ?? "unknown"}
-                  </p>
-                  <p className="text-xs text-muted truncate">
-                    {log.instagramAccount
-                      ? `@${log.instagramAccount.username} · `
-                      : ""}
-                    {log.commentText}
-                  </p>
-                </div>
-                <StatusBadge status={log.status} />
+      {/* Recent Activity — full-width card on its own row */}
+      <div className="panel rounded p-4 sm:p-6">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground mb-4">
+          <Pulse size={16} weight="regular" className={ICON_CLASS} />
+          {t("Recent Activity")}
+        </h2>
+
+        {stats?.recentLogs.length === 0 && (
+          <p className="text-sm text-muted text-center py-8">{t("No activity yet")}</p>
+        )}
+
+        <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
+          {(stats?.recentLogs.slice(0, visibleActivityCount) ?? []).map((log) => (
+            <div
+              key={log.id}
+              className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground truncate">
+                  @{log.commenterName ?? "unknown"}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {log.instagramAccount
+                    ? `@${log.instagramAccount.username} · `
+                    : ""}
+                  {log.commentText}
+                </p>
               </div>
-            ))}
-          </div>
+              <StatusBadge status={log.status} />
+            </div>
+          ))}
         </div>
+
+        {stats && stats.recentLogs.length > visibleActivityCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleActivityCount((c) => c + ACTIVITY_PAGE_SIZE)}
+            className="mt-4 w-full rounded border border-border py-2 text-sm text-foreground hover:bg-surface-hover"
+          >
+            <CaretDown size={14} weight="bold" className={ICON_CLASS} />
+            {t("Show more")} ({stats.recentLogs.length - visibleActivityCount})
+          </button>
+        )}
+        {stats && visibleActivityCount > ACTIVITY_PAGE_SIZE && (
+          <button
+            type="button"
+            onClick={() => setVisibleActivityCount(ACTIVITY_PAGE_SIZE)}
+            className="mt-2 w-full rounded py-2 text-sm text-muted hover:text-foreground"
+          >
+            <CaretUp size={14} weight="bold" className={ICON_CLASS} />
+            {t("Show less")}
+          </button>
+        )}
       </div>
     </div>
   );

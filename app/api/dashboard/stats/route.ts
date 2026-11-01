@@ -137,7 +137,8 @@ export async function GET(request: NextRequest) {
     prisma.dmLog.findMany({
       where: { workspaceId, ...accountFilter },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      // Enough history for the dashboard's "Show more" pager; kept bounded.
+      take: 50,
       include: {
         automation: { select: { name: true } },
         instagramAccount: { select: { username: true } },

@@ -55,6 +55,31 @@ select:focus-visible {
   }
 }
 
+/* Thin accent-coloured scrollbar, everywhere. Applied globally (not scoped
+   to one component) so the dashboard, in-panel lists and the landing page all
+   match the sidebar. The thumb is a soft orange — the accent knocked back
+   with transparency — so it reads as a hint, not a stripe. Standard
+   `scrollbar-*` properties cover Firefox; the vendor ::-webkit-* rules cover
+   Chrome/Safari/Edge. */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 45%, transparent) transparent;
+}
+
 /* Panel — flat container. Replaces .glass / .glass-strong. */
 .panel {
   background: var(--color-surface);

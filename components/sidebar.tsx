@@ -12,16 +12,26 @@ import Link from "next/link";
 import Image from "next/image";
 import { zernioLink } from "@/lib/zernio-links";
 import { usePathname } from "next/navigation";
+import {
+  SquaresFour,
+  ChartLineUp,
+  Tray,
+  Megaphone,
+  EnvelopeSimple,
+  Plugs,
+  Bug,
+  Gear,
+} from "@phosphor-icons/react";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Overview", href: "/overview" },
-  { label: "Inbox", href: "/inbox" },
-  { label: "Campaigns", href: "/campaigns" },
-  { label: "DM Logs", href: "/logs" },
-  { label: "Settings", href: "/settings" },
-  { label: "API & MCP", href: "/integrations" },
-  { label: "Diagnostics", href: "/diagnostics" },
+  { label: "Dashboard", href: "/dashboard", icon: SquaresFour },
+  { label: "Overview", href: "/overview", icon: ChartLineUp },
+  { label: "Inbox", href: "/inbox", icon: Tray },
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+  { label: "DM Logs", href: "/logs", icon: EnvelopeSimple },
+  { label: "API & MCP", href: "/integrations", icon: Plugs },
+  { label: "Diagnostics", href: "/diagnostics", icon: Bug },
+  { label: "Settings", href: "/settings", icon: Gear },
 ] as const;
 
 interface SidebarProps {
@@ -78,7 +88,7 @@ export default function Sidebar({
                 onClick={onClose}
                 aria-current={isActive ? "page" : undefined}
                 className={`
-                  block px-3 py-2.5 rounded text-sm
+                  flex items-center gap-2.5 px-3 py-2.5 rounded text-sm
                   ${
                     isActive
                       ? "bg-surface-hover text-foreground font-medium"
@@ -86,6 +96,7 @@ export default function Sidebar({
                   }
                 `}
               >
+                <item.icon size={16} weight="regular" className="shrink-0" aria-hidden />
                 {t(item.label)}
               </Link>
             );
