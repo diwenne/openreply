@@ -10,12 +10,13 @@
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "worker": "tsx worker/dm-worker.ts",
+    "worker": "node --env-file=.env --import tsx worker/dm-worker.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
+    "@phosphor-icons/react": "^2.1.10",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@vercel/analytics": "^2.0.1",
