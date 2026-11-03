@@ -44,6 +44,9 @@ interface LoadedCampaign {
   publicReplyEnabled: boolean;
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
+  reminderEnabled: boolean;
+  reminderDelayMinutes: number | null;
+  reminderMessage: string | null;
   isActive: boolean;
   instagramAccountId: string;
   trackedLinks?: { destinationUrl: string }[];
@@ -158,6 +161,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmMessage, setOpeningDmMessage] = useState("");
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
 
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDelayMinutes, setReminderDelayMinutes] = useState(60);
+  const [reminderMessage, setReminderMessage] = useState("");
+
   const [dmMessage, setDmMessage] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
@@ -251,6 +258,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
+        setReminderEnabled(c.reminderEnabled);
+        setReminderDelayMinutes(c.reminderDelayMinutes ?? 60);
+        setReminderMessage(c.reminderMessage ?? "");
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
@@ -379,6 +389,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
       openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
+      reminderEnabled,
+      reminderDelayMinutes: reminderEnabled ? reminderDelayMinutes : null,
+      reminderMessage: reminderEnabled ? reminderMessage : null,
       publicReplyEnabled,
       publicReplyMessages: publicReplyEnabled
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
@@ -762,6 +775,54 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   placeholder="Send me the link"
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                   maxLength={64}
+                />
+              </div>
+            )}
+          </div>
+        </Section>
+
+        <Section title="And if they don't click">
+          <div className="rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-foreground">
+                Send a reminder if they don&apos;t click
+              </span>
+              <Toggle
+                on={reminderEnabled}
+                onToggle={() => setReminderEnabled(!reminderEnabled)}
+              />
+            </div>
+            {reminderEnabled && (
+              <div className="mt-3 space-y-2">
+                {!trackedDestinationUrl.trim() && (
+                  <p className="text-xs text-error">
+                    Add a tracked link below — the reminder needs one to know
+                    whether they clicked.
+                  </p>
+                )}
+                <div className="space-y-1">
+                  <input
+                    type="number"
+                    value={reminderDelayMinutes}
+                    onChange={(e) =>
+                      setReminderDelayMinutes(Number(e.target.value))
+                    }
+                    min={1}
+                    max={1439}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                  />
+                  <p className="text-xs text-muted">
+                    Sent this many minutes after the DM. Must be under 24h —
+                    Instagram&apos;s messaging window.
+                  </p>
+                </div>
+                <textarea
+                  value={reminderMessage}
+                  onChange={(e) => setReminderMessage(e.target.value)}
+                  placeholder="Still interested, {username}? Tap the link before it's gone 👇"
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                  maxLength={1000}
                 />
               </div>
             )}

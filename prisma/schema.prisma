@@ -18,11 +18,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts          Account[]
-  sessions          Session[]
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers  WorkspaceMember[]
-  sentInvitations   WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
+  accounts         Account[]
+  sessions         Session[]
+  ownedWorkspaces  Workspace[]           @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+  sentInvitations  WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
 }
 
 model Account {
@@ -125,16 +125,23 @@ model WorkspaceInvitation {
 }
 
 model InstagramAccount {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   workspaceId       String
-  instagramId       String   @unique
+  // External account id used for webhook `entry.id` matching and send calls.
+  // For INSTAGRAM rows this is the IG professional user_id. For FACEBOOK rows
+  // it holds the Page id (same value as pageId) so every existing lookup by
+  // instagramId keeps working unchanged across both platforms.
+  instagramId       String    @unique
+  platform          Platform  @default(INSTAGRAM)
+  // Facebook Page id; null for INSTAGRAM rows.
+  pageId            String?
   username          String
   name              String?
   accessToken       String
   tokenExpiresAt    DateTime?
-  webhookSubscribed Boolean  @default(false)
-  connectedAt       DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  webhookSubscribed Boolean   @default(false)
+  connectedAt       DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   automations Automation[]
@@ -145,30 +152,38 @@ model InstagramAccount {
 }
 
 model Automation {
-  id                 String   @id @default(cuid())
+  id                 String @id @default(cuid())
   workspaceId        String
   instagramAccountId String
 
-  name           String
-  goal           String?
-  postId         String?
-  postUrl        String?
-  pendingNextReel Boolean @default(false)
-  matchAnyPost   Boolean @default(false)
-  keywords       String[]
-  matchAnyWord   Boolean @default(false)
-  dmMessage      String
-  openingDmEnabled     Boolean @default(false)
+  name                 String
+  goal                 String?
+  postId               String?
+  postUrl              String?
+  pendingNextReel      Boolean  @default(false)
+  matchAnyPost         Boolean  @default(false)
+  keywords             String[]
+  matchAnyWord         Boolean  @default(false)
+  dmMessage            String
+  openingDmEnabled     Boolean  @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
   linkButtonLabel      String?
-  publicReplyEnabled Boolean @default(false)
-  publicReplyMessage String?
-  publicReplyMessages String[] @default([])
-  isActive       Boolean @default(true)
-  wholeWordMatch Boolean @default(true)
-  reportShareSlug    String? @unique
-  reportShareEnabled Boolean @default(true)
+  publicReplyEnabled   Boolean  @default(false)
+  publicReplyMessage   String?
+  publicReplyMessages  String[] @default([])
+  isActive             Boolean  @default(true)
+  wholeWordMatch       Boolean  @default(true)
+  reportShareSlug      String?  @unique
+  reportShareEnabled   Boolean  @default(true)
+
+  // "You didn't click yet" reminder follow-up. When enabled, a delayed job
+  // fires reminderDelayMinutes after the link DM; it sends reminderMessage only
+  // if no LinkClick is attributed to that DmLog and the 24h messaging window is
+  // still open.
+  reminderEnabled      Boolean @default(false)
+  reminderDelayMinutes Int?
+  reminderMessage      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,26 +200,33 @@ model Automation {
 }
 
 model DmLog {
-  id                 String     @id @default(cuid())
+  id                 String @id @default(cuid())
   workspaceId        String
   automationId       String
   instagramAccountId String
 
-  commenterId   String
-  commenterName String?
-  commentText   String
-  commentId     String
+  commenterId    String
+  commenterName  String?
+  commentText    String
+  commentId      String
   matchedKeyword String?
-  status        DmStatus @default(PENDING)
-  attempts      Int      @default(0)
-  dmSentAt      DateTime?
-  errorMessage  String?
+  status         DmStatus  @default(PENDING)
+  attempts       Int       @default(0)
+  dmSentAt       DateTime?
+  errorMessage   String?
 
   // The public comment reply is delivered independently of the DM, so its
   // outcome is tracked separately. publicReplySentAt makes it idempotent across
   // retries; a DM failure never blocks or re-posts the public reply.
   publicReplySentAt DateTime?
   publicReplyError  String?
+
+  // Reminder follow-up (see Automation.reminderEnabled). reminderSentAt makes
+  // the send idempotent; reminderSkippedReason records why a scheduled reminder
+  // did not send (e.g. "clicked", "window_expired").
+  reminderSentAt        DateTime?
+  reminderError         String?
+  reminderSkippedReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -260,6 +282,10 @@ model LinkClick {
   automationId       String
   instagramAccountId String
   trackedLinkId      String
+  // The DmLog whose tracked URL produced this click, when attributable (set via
+  // the `?c=` param on /r/[slug]). Null for pre-feature or untracked clicks.
+  // Used by the reminder check to tell whether a specific recipient clicked.
+  dmLogId            String?
   ipHash             String?
   userAgent          String?
   referrer           String?
@@ -274,19 +300,20 @@ model LinkClick {
   @@index([automationId])
   @@index([instagramAccountId])
   @@index([trackedLinkId])
+  @@index([dmLogId])
   @@index([createdAt])
   @@index([workspaceId, createdAt])
 }
 
 model WebhookEvent {
-  id          String        @id @default(cuid())
-  workspaceId String?
-  object      String?
-  payload     Json
-  status      WebhookStatus @default(PENDING)
+  id           String        @id @default(cuid())
+  workspaceId  String?
+  object       String?
+  payload      Json
+  status       WebhookStatus @default(PENDING)
   errorMessage String?
-  createdAt   DateTime      @default(now())
-  processedAt DateTime?
+  createdAt    DateTime      @default(now())
+  processedAt  DateTime?
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
@@ -295,13 +322,13 @@ model WebhookEvent {
 }
 
 model OperationalEvent {
-  id          String                @id @default(cuid())
+  id          String                 @id @default(cuid())
   workspaceId String?
   source      OperationalEventSource
-  level       OperationalEventLevel @default(INFO)
+  level       OperationalEventLevel  @default(INFO)
   message     String
   payload     Json?
-  createdAt   DateTime              @default(now())
+  createdAt   DateTime               @default(now())
   resolvedAt  DateTime?
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
@@ -310,6 +337,11 @@ model OperationalEvent {
   @@index([source])
   @@index([level])
   @@index([createdAt])
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
 }
 
 enum WorkspaceRole {

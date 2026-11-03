@@ -23,6 +23,25 @@ interface SettingsData {
   >;
 }
 
+// Connect callbacks for both platforms redirect back here with a status code
+// (?instagram=… / ?facebook=…), success lands on /dashboard?connected=true.
+const CONNECT_STATUS: Record<string, { text: string; tone: "success" | "warning" | "error" }> = {
+  success: { text: "Account connected.", tone: "success" },
+  denied: { text: "Connection cancelled — the permission request was declined.", tone: "error" },
+  invalid: { text: "Connection failed — invalid response from the provider. Please try again.", tone: "error" },
+  forbidden: { text: "You don't have permission to connect accounts for this workspace.", tone: "error" },
+  failed: { text: "Connection failed — something went wrong. Please try again.", tone: "error" },
+  no_pages: { text: "No eligible Facebook Pages were found on that account.", tone: "warning" },
+  already_connected: { text: "That account is already connected.", tone: "warning" },
+};
+
+function resolveConnectStatus(search: string) {
+  const params = new URLSearchParams(search);
+  if (params.get("connected") === "true") return CONNECT_STATUS.success;
+  const code = params.get("facebook") ?? params.get("instagram");
+  return code ? CONNECT_STATUS[code] ?? CONNECT_STATUS.failed : null;
+}
+
 interface WorkspaceMembersData {
   currentUserRole: "OWNER" | "ADMIN" | "MEMBER";
   members: Array<{
@@ -54,6 +73,9 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [connectStatus] = useState(() =>
+    typeof window === "undefined" ? null : resolveConnectStatus(window.location.search)
+  );
 
   useEffect(() => {
     Promise.all([
@@ -128,6 +150,20 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
+      {connectStatus && (
+        <div
+          className={`rounded px-4 py-3 text-sm font-medium ${
+            connectStatus.tone === "success"
+              ? "bg-success/10 text-success"
+              : connectStatus.tone === "warning"
+                ? "bg-warning/10 text-warning"
+                : "bg-error/10 text-error"
+          }`}
+        >
+          {connectStatus.text}
+        </div>
+      )}
+
       <section className="panel rounded p-6">
         <h2 className="text-base font-semibold mb-6">Instagram Connection</h2>
 
@@ -200,12 +236,18 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-border flex gap-3">
+        <div className="mt-6 pt-4 border-t border-border flex flex-wrap gap-3">
           <a
             href="/api/instagram/connect"
             className="px-4 py-2 rounded text-sm font-medium transition-colors bg-accent text-white hover:bg-accent-hover"
           >
             {accounts.length > 0 ? "Connect another account" : "Connect Instagram"}
+          </a>
+          <a
+            href="/api/facebook/connect"
+            className="px-4 py-2 rounded text-sm font-medium transition-colors border border-border text-foreground hover:bg-surface"
+          >
+            Connect Facebook Page
           </a>
         </div>
       </section>

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { getDMQueue } from "@/lib/queue/client";
 import {
   parseCommentEvents,
+  parseFacebookCommentEvents,
   parsePostbackEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
@@ -75,9 +76,14 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const commentEvents = parseCommentEvents(
-      payload as Parameters<typeof parseCommentEvents>[0]
-    );
+    // Instagram ("instagram"/comments) and Facebook Page ("page"/feed) comment
+    // webhooks both normalize to WebhookCommentEvent and enqueue identically.
+    const commentEvents = [
+      ...parseCommentEvents(payload as Parameters<typeof parseCommentEvents>[0]),
+      ...parseFacebookCommentEvents(
+        payload as Parameters<typeof parseFacebookCommentEvents>[0]
+      ),
+    ];
     const queue = getDMQueue();
 
     for (const event of commentEvents) {

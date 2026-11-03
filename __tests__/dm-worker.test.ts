@@ -19,6 +19,10 @@ const {
       findUnique: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
+      create: vi.fn(),
+    },
+    linkClick: {
+      findFirst: vi.fn(),
     },
     instagramAccount: {
       findUnique: vi.fn(),
@@ -90,6 +94,7 @@ vi.mock("@/lib/queue/client", () => ({
   }),
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
+  REMINDER_JOB_NAME: "process-reminder",
 }));
 
 vi.mock("bullmq", () => {
@@ -175,6 +180,8 @@ beforeEach(() => {
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockResolvedValue({});
+  mockPrisma.dmLog.create.mockResolvedValue({ id: "dmlog_test" });
+  mockPrisma.linkClick.findFirst.mockResolvedValue(null);
   mockPrisma.instagramAccount.findUnique.mockResolvedValue({
     workspaceId: "workspace_123",
   });
@@ -340,7 +347,7 @@ describe("DM Worker — Full Pipeline", () => {
       }),
       expect.objectContaining({
         delay: 1800000,
-        jobId: "comment:ig_456:comment_555:retry:1",
+        jobId: "comment_ig_456_comment_555_retry_1",
       })
     );
   });
@@ -466,7 +473,7 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Hey commenter_user! Here is the offer:",
       "Get offer",
-      "http://localhost:3000/r/abc123"
+      "http://localhost:3000/r/abc123?c=dmlog_test"
     );
   });
 });

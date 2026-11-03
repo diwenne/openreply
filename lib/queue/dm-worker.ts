@@ -3,9 +3,11 @@ import {
   getDMQueue,
   getRedisConnection,
   POSTBACK_JOB_NAME,
+  REMINDER_JOB_NAME,
   type DmQueueJob,
   type ProcessCommentJob,
   type ProcessPostbackJob,
+  type ProcessReminderJob,
 } from "./client";
 import { prisma } from "@/lib/db/client";
 import {
@@ -17,6 +19,13 @@ import {
   sendPrivateReplyWithButton,
   sendPrivateReplyWithLinkButton,
 } from "@/lib/meta/client";
+import {
+  sendMessengerPrivateReply,
+  sendMessengerPrivateReplyWithLinkButton,
+  sendMessengerDirectMessage,
+  sendMessengerDirectMessageWithLinkButton,
+  sendFacebookCommentReply,
+} from "@/lib/meta/facebook-client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { reserveDMSlot } from "@/lib/utils/rate-limiter";
@@ -33,6 +42,11 @@ import {
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
+const MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Safety margin before the 24h window closes, absorbing comment→send latency
+// and clock skew. ponytail: 1h is conservative; tune if reminders are dropped.
+const REMINDER_SAFETY_BUFFER_MS = 60 * 60 * 1000;
+
 function formatError(error: unknown): string {
   if (error instanceof MetaApiError) {
     return `Meta API Error ${error.code}: ${error.message}`;
@@ -41,6 +55,25 @@ function formatError(error: unknown): string {
     return error.message;
   }
   return "Unknown error";
+}
+
+function senders(platform: "INSTAGRAM" | "FACEBOOK") {
+  if (platform === "FACEBOOK") {
+    return {
+      privateReply: sendMessengerPrivateReply,
+      privateReplyWithLinkButton: sendMessengerPrivateReplyWithLinkButton,
+      directMessage: sendMessengerDirectMessage,
+      directMessageWithLinkButton: sendMessengerDirectMessageWithLinkButton,
+      commentReply: sendFacebookCommentReply,
+    };
+  }
+  return {
+    privateReply: sendPrivateReply,
+    privateReplyWithLinkButton: sendPrivateReplyWithLinkButton,
+    directMessage: sendDirectMessage,
+    directMessageWithLinkButton: sendDirectMessageWithLinkButton,
+    commentReply: sendCommentReply,
+  };
 }
 
 async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
@@ -171,11 +204,15 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       continue;
     }
 
+    const platform = automation.instagramAccount.platform;
+    const send = senders(platform);
+
     // Ensure a log row exists before the public reply leg (which updates it).
     // Only (re)set PENDING when the DM will actually be attempted, so a prior
     // SENT is never clobbered while we come back just to retry the public reply.
+    let createdLog: { id: string } | null = null;
     if (!existingLog) {
-      await prisma.dmLog.create({
+      createdLog = await prisma.dmLog.create({
         data: {
           workspaceId: automation.workspaceId,
           automationId: automation.id,
@@ -203,6 +240,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       });
     }
 
+    const dmLogId = existingLog?.id ?? createdLog!.id;
+
     // Public reply leg — decoupled from the DM and posted first so a DM failure
     // (e.g. a non-follower whose messaging is restricted) never suppresses it.
     // Idempotent across retries via publicReplySentAt.
@@ -224,7 +263,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           trackedLinks: automation.trackedLinks,
         });
-        await sendCommentReply(accessToken, commentId, publicReply);
+        await send.commentReply(accessToken, commentId, publicReply);
         await prisma.dmLog.update({
           where: {
             automationId_commentId: { automationId: automation.id, commentId },
@@ -349,7 +388,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // With an opening DM, the private reply is a button message; tapping it
     // fires a postback that delivers the reveal (see processPostback). Without
     // one, we send the reveal text directly as today.
+    // ponytail: FB has no postback-button opening-DM flow in v1; FB campaigns send the link DM directly.
     const useOpeningDm =
+      platform === "INSTAGRAM" &&
       automation.openingDmEnabled &&
       Boolean(automation.openingDmMessage) &&
       Boolean(automation.openingDmButtonLabel);
@@ -376,10 +417,14 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             message: automation.dmMessage,
             commenterName,
           }) || "Here's your link:";
-        const trackedUrl = buildTrackedUrl(automation.trackedLinks[0].slug);
+        const trackedUrl = buildTrackedUrl(
+          automation.trackedLinks[0].slug,
+          undefined,
+          dmLogId
+        );
 
         try {
-          await sendPrivateReplyWithLinkButton(
+          await send.privateReplyWithLinkButton(
             accessToken,
             automation.instagramAccount.instagramId,
             commentId,
@@ -398,8 +443,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
               message: automation.dmMessage,
               commenterName,
               trackedLinks: [automation.trackedLinks[0]],
+              dmLogId,
             }) || `${bodyText}\n${trackedUrl}`;
-          await sendPrivateReply(
+          await send.privateReply(
             accessToken,
             automation.instagramAccount.instagramId,
             commentId,
@@ -411,8 +457,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          dmLogId,
         });
-        await sendPrivateReply(
+        await send.privateReply(
           accessToken,
           automation.instagramAccount.instagramId,
           commentId,
@@ -433,6 +480,36 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           errorMessage: null,
         },
       });
+
+      // Best-effort "you didn't click yet" reminder. Deterministic jobId dedups
+      // so re-processing the same comment never schedules a second reminder.
+      // Never let an enqueue failure fail the send.
+      if (
+        automation.reminderEnabled &&
+        automation.reminderMessage &&
+        automation.trackedLinks[0] &&
+        !useOpeningDm
+      ) {
+        try {
+          const delayMinutes = automation.reminderDelayMinutes ?? 60;
+          const delay = Math.min(
+            delayMinutes * 60_000,
+            MESSAGING_WINDOW_MS - REMINDER_SAFETY_BUFFER_MS
+          );
+          if (delay > 0) {
+            await getDMQueue().add(
+              REMINDER_JOB_NAME,
+              { dmLogId, instagramAccountId },
+              { delay, jobId: `reminder_${dmLogId}` }
+            );
+          }
+        } catch (reminderError) {
+          console.error(
+            "[DM Worker] Failed to schedule reminder:",
+            formatError(reminderError)
+          );
+        }
+      }
     } catch (error) {
       await releaseWorkspaceDMReservation(
         automation.workspaceId,
@@ -461,6 +538,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
  * Deliver the reveal message after a user taps an opening DM's button.
  * The postback payload is `reveal:<automationId>`; the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
+ * Instagram-only: postbacks only come from IG opening DMs (FB has no
+ * postback-button opening-DM flow in v1), so no platform dispatch here.
  */
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   const { instagramAccountId, userId, payload } = job.data;
@@ -621,9 +700,132 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   }
 }
 
+/**
+ * Send one "you didn't click yet" reminder DM, if the commenter hasn't clicked
+ * the tracked link and we're still inside Instagram's 24h messaging window.
+ * Idempotent via reminderSentAt; records why it skipped in reminderSkippedReason.
+ */
+async function processReminder(job: Job<ProcessReminderJob>): Promise<void> {
+  const { dmLogId } = job.data;
+
+  const dmLog = await prisma.dmLog.findUnique({
+    where: { id: dmLogId },
+    include: {
+      automation: {
+        include: {
+          instagramAccount: true,
+          workspace: true,
+          trackedLinks: {
+            select: { slug: true, destinationUrl: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+    },
+  });
+
+  if (!dmLog) return;
+  if (dmLog.reminderSentAt) return; // already sent — idempotent
+
+  const automation = dmLog.automation;
+  if (!automation.reminderEnabled || !automation.reminderMessage) return;
+
+  // Clicked already — no nudge needed.
+  const clicked = await prisma.linkClick.findFirst({ where: { dmLogId } });
+  if (clicked) {
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderSkippedReason: "clicked" },
+    });
+    return;
+  }
+
+  // Outside the safe 24h messaging window — sending would be rejected.
+  const elapsed = Date.now() - dmLog.createdAt.getTime();
+  if (elapsed >= MESSAGING_WINDOW_MS - REMINDER_SAFETY_BUFFER_MS) {
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderSkippedReason: "window_expired" },
+    });
+    return;
+  }
+
+  if (!automation.instagramAccount.accessToken) {
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderError: "No Instagram access token available" },
+    });
+    return;
+  }
+
+  let token: string;
+  try {
+    token = decryptToken(automation.instagramAccount.accessToken);
+  } catch {
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderError: "Failed to decrypt Instagram access token" },
+    });
+    return;
+  }
+
+  const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+  if (!usage.allowed) {
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderSkippedReason: "plan_limit" },
+    });
+    return;
+  }
+
+  const rateLimit = await reserveDMSlot(automation.instagramAccount.instagramId);
+  if (!rateLimit.allowed) {
+    await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+    // ponytail: a dropped reminder is acceptable; add requeue if needed.
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderSkippedReason: "rate_limit" },
+    });
+    return;
+  }
+
+  // Attribute a click on the reminder's link too, via ?c=<dmLogId>.
+  const text = renderMessageWithTracking({
+    message: automation.reminderMessage,
+    commenterName: dmLog.commenterName,
+    trackedLinks: automation.trackedLinks,
+    dmLogId,
+  });
+
+  const send = senders(automation.instagramAccount.platform);
+
+  try {
+    await send.directMessage(
+      token,
+      automation.instagramAccount.instagramId,
+      dmLog.commenterId,
+      text
+    );
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderSentAt: new Date(), reminderError: null },
+    });
+  } catch (error) {
+    await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+    await prisma.dmLog.update({
+      where: { id: dmLogId },
+      data: { reminderError: formatError(error) },
+    });
+    throw error; // let BullMQ retry within attempts
+  }
+}
+
 async function processJob(job: Job<DmQueueJob>): Promise<void> {
   if (job.name === POSTBACK_JOB_NAME) {
     return processPostback(job as Job<ProcessPostbackJob>);
+  }
+  if (job.name === REMINDER_JOB_NAME) {
+    return processReminder(job as Job<ProcessReminderJob>);
   }
   return processComment(job as Job<ProcessCommentJob>);
 }

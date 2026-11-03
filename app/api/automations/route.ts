@@ -43,6 +43,9 @@ const createAutomationSchema = z
       .union([z.string().url(), z.literal("")])
       .optional()
       .nullable(),
+    reminderEnabled: z.boolean().optional().default(false),
+    reminderDelayMinutes: z.number().int().min(1).max(1439).optional().nullable(),
+    reminderMessage: z.string().max(1000).optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
@@ -63,6 +66,15 @@ const createAutomationSchema = z
       (Boolean(d.openingDmMessage?.trim()) &&
         Boolean(d.openingDmButtonLabel?.trim())),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
+  )
+  // A reminder DM needs a message and a tracked link to point at.
+  .refine(
+    (d) =>
+      !d.reminderEnabled ||
+      (Boolean(d.reminderMessage?.trim()) &&
+        typeof d.trackedDestinationUrl === "string" &&
+        d.trackedDestinationUrl.length > 0),
+    { message: "A reminder needs a message and a tracked link", path: ["reminderMessage"] }
   );
 
 const updateAutomationSchema = z.object({
@@ -91,6 +103,9 @@ const updateAutomationSchema = z.object({
     .union([z.string().url(), z.literal("")])
     .optional()
     .nullable(),
+  reminderEnabled: z.boolean().optional(),
+  reminderDelayMinutes: z.number().int().min(1).max(1439).optional().nullable(),
+  reminderMessage: z.string().max(1000).optional().nullable(),
 });
 
 export async function GET(request: NextRequest) {
@@ -356,6 +371,13 @@ export async function POST(request: NextRequest) {
       publicReplyMessage: parsed.data.publicReplyEnabled
         ? publicReplyList[0] ?? parsed.data.publicReplyMessage ?? null
         : null,
+      reminderEnabled: parsed.data.reminderEnabled,
+      reminderDelayMinutes: parsed.data.reminderEnabled
+        ? parsed.data.reminderDelayMinutes ?? 60
+        : null,
+      reminderMessage: parsed.data.reminderEnabled
+        ? parsed.data.reminderMessage?.trim() || null
+        : null,
       isActive: parsed.data.isActive,
       wholeWordMatch: parsed.data.wholeWordMatch,
       workspaceId,
@@ -444,6 +466,14 @@ export async function PATCH(request: NextRequest) {
   if (automationData.openingDmEnabled === false) {
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
+  }
+  // A disabled reminder clears its delay and message; an enabled one keeps the
+  // UI-supplied delay untouched. Trim the message when present.
+  if (automationData.reminderEnabled === false) {
+    automationData.reminderDelayMinutes = null;
+    automationData.reminderMessage = null;
+  } else if (typeof automationData.reminderMessage === "string") {
+    automationData.reminderMessage = automationData.reminderMessage.trim() || null;
   }
   // Any-post / next-reel campaigns carry no specific post.
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {

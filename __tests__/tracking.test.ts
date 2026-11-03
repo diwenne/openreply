@@ -110,3 +110,25 @@ describe("campaign analytics helpers", () => {
     ]);
   });
 });
+
+describe("buildTrackedUrl click attribution", () => {
+  it("omits ?c= when no dmLogId is given (byte-identical to before)", () => {
+    expect(buildTrackedUrl("abc", "https://x.io")).toBe("https://x.io/r/abc");
+  });
+
+  it("appends ?c=<dmLogId> when provided", () => {
+    expect(buildTrackedUrl("abc", "https://x.io", "log_1")).toBe(
+      "https://x.io/r/abc?c=log_1"
+    );
+  });
+
+  it("threads dmLogId through renderMessageWithTracking's {link}", () => {
+    const out = renderMessageWithTracking({
+      message: "Here: {link}",
+      trackedLinks: [{ slug: "abc", destinationUrl: "https://dest.io" }],
+      baseUrl: "https://x.io",
+      dmLogId: "log_9",
+    });
+    expect(out).toBe("Here: https://x.io/r/abc?c=log_9");
+  });
+});

@@ -5,6 +5,12 @@ export interface AccountOption {
   username: string;
   instagramId: string;
   name?: string | null;
+  platform?: "INSTAGRAM" | "FACEBOOK";
+}
+
+// Native <option>s can't hold styled badges, so the platform shows as a text label.
+function platformLabel(platform?: "INSTAGRAM" | "FACEBOOK") {
+  return platform === "FACEBOOK" ? "Facebook" : "Instagram";
 }
 
 interface AccountSelectProps {
@@ -35,7 +41,7 @@ export default function AccountSelect({
         {includeAll && <option value="all">All accounts</option>}
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
-            @{account.username}
+            @{account.username} · {platformLabel(account.platform)}
           </option>
         ))}
       </select>

@@ -8,6 +8,8 @@ type RedirectRouteProps = {
 
 export async function GET(request: NextRequest, { params }: RedirectRouteProps) {
   const { slug } = await params;
+  // Parse from request.url (not request.nextUrl) so a plain Request works too.
+  const clickToken = new URL(request.url).searchParams.get("c");
   const trackedLink = await prisma.trackedLink.findUnique({
     where: { slug },
     select: {
@@ -36,6 +38,10 @@ export async function GET(request: NextRequest, { params }: RedirectRouteProps) 
       ipHash: hashClickIp(getRequestIp(request)),
       userAgent: request.headers.get("user-agent"),
       referrer: request.headers.get("referer"),
+      dmLogId:
+        clickToken && clickToken.length > 0 && clickToken.length <= 64
+          ? clickToken
+          : null,
     },
   });
 

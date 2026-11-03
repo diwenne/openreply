@@ -63,7 +63,12 @@ function errMessage(error: unknown): string {
 /** One reconciliation pass across every active campaign. */
 export async function reconcileComments(): Promise<void> {
   const automations = await prisma.automation.findMany({
-    where: { isActive: true },
+    // Instagram only: the sweep calls graph.instagram.com (getUserMedia /
+    // getRecentMediaComments), which Facebook Page accounts can't use. Facebook
+    // relies on Page `feed` webhooks (more reliable than IG's) with no polling
+    // safety net for now.
+    // ponytail: add an FB reconciler if Page feed webhooks prove lossy.
+    where: { isActive: true, instagramAccount: { platform: "INSTAGRAM" } },
     select: {
       id: true,
       name: true,

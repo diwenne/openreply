@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
         username: true,
         instagramId: true,
         name: true,
+        platform: true,
         tokenExpiresAt: true,
         webhookSubscribed: true,
       },

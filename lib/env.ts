@@ -38,6 +38,7 @@ export const serverEnvSchema = z.object({
   ENCRYPTION_KEY: z.string().regex(HEX_32_BYTE),
   INSTAGRAM_APP_ID: z.string().min(1),
   INSTAGRAM_APP_SECRET: z.string().min(1),
+  FACEBOOK_APP_ID: z.string().min(1),
   FACEBOOK_APP_SECRET: z.string().min(1),
   WEBHOOK_VERIFY_TOKEN: z.string().min(1),
 });

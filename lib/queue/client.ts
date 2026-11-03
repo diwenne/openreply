@@ -43,9 +43,16 @@ export interface ProcessPostbackJob {
   mid?: string;
 }
 
-export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob;
+// Scheduled after a link DM to nudge a commenter who hasn't clicked yet.
+export interface ProcessReminderJob {
+  dmLogId: string;
+  instagramAccountId: string;
+}
+
+export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob | ProcessReminderJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
+export const REMINDER_JOB_NAME = "process-reminder";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 
