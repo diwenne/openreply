@@ -40,6 +40,9 @@ export const serverEnvSchema = z.object({
   INSTAGRAM_APP_SECRET: z.string().min(1),
   FACEBOOK_APP_ID: z.string().min(1),
   FACEBOOK_APP_SECRET: z.string().min(1),
+  // Optional: Facebook Login for Business Configuration id. When set, the connect
+  // dialog uses config_id instead of a scope list. Unset = classic scope dialog.
+  FACEBOOK_LOGIN_CONFIG_ID: z.string().min(1).optional(),
   WEBHOOK_VERIFY_TOKEN: z.string().min(1),
 });
 

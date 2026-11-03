@@ -29,8 +29,25 @@ export function getFacebookAuthorizationUrl(
     redirect_uri: redirectUri,
     state,
     response_type: "code",
-    scope: "pages_messaging,pages_manage_metadata,pages_read_engagement",
   });
+
+  // The Meta app uses the "Facebook Login for Business" product, which drives the
+  // dialog from a saved Configuration (config_id) instead of a runtime scope list.
+  // The config must be a *User access token* type bundling pages_messaging,
+  // pages_manage_metadata, pages_read_engagement (see PR description). User-token
+  // configs default to the implicit grant, so override_default_response_type=true
+  // is required to force the code grant our callback exchanges server-side.
+  // Falls back to the classic scope dialog when FACEBOOK_LOGIN_CONFIG_ID is unset.
+  const configId = process.env.FACEBOOK_LOGIN_CONFIG_ID;
+  if (configId) {
+    params.set("config_id", configId);
+    params.set("override_default_response_type", "true");
+  } else {
+    params.set(
+      "scope",
+      "pages_messaging,pages_manage_metadata,pages_read_engagement"
+    );
+  }
 
   return `${oauthDialogUrl()}?${params.toString()}`;
 }
