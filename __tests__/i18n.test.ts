@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createI18n, resolveLocale } from "../lib/i18n";
+import es from "../lib/i18n/es.json";
 import ptBR from "../lib/i18n/pt-BR.json";
 import ru from "../lib/i18n/ru.json";
 import zhTW from "../lib/i18n/zh-TW.json";
 
 describe("interface translations", () => {
   it("keeps English as the default for absent or unsupported preferences", () => {
-    for (const value of [undefined, null, "", "fr", "zh-CN", "../zh-TW", "pt", "pt-PT", "ru-RU"]) {
+    for (const value of [undefined, null, "", "fr", "zh-CN", "../zh-TW", "pt", "pt-PT", "ru-RU", "es-ES", "es-MX"]) {
       expect(resolveLocale(value)).toBe("en");
     }
     expect(resolveLocale("zh-TW")).toBe("zh-TW");
     expect(resolveLocale("pt-BR")).toBe("pt-BR");
     expect(resolveLocale("ru")).toBe("ru");
+    expect(resolveLocale("es")).toBe("es");
   });
 
   it("renders both interface languages from the same keys", () => {
@@ -53,7 +55,7 @@ describe("interface translations", () => {
   it("has complete, plain-text translations with matching interpolation fields", () => {
     const placeholders = (text: string) =>
       [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-    for (const catalog of [zhTW, ptBR, ru]) {
+    for (const catalog of [zhTW, ptBR, ru, es]) {
       for (const [source, translation] of Object.entries(catalog)) {
         expect(translation.trim(), source).not.toBe("");
         expect(placeholders(translation), source).toEqual(placeholders(source));
@@ -97,6 +99,23 @@ describe("interface translations", () => {
       ru["Sent"],
       ru["Owner"],
       ru["Active"],
+      "CUSTOM_STATUS",
+    ]);
+  });
+
+  it("keeps the Spanish catalog on exactly the same keys", () => {
+    expect(Object.keys(es).sort()).toEqual(Object.keys(zhTW).sort());
+  });
+
+  it("renders Spanish with interpolation and display labels", () => {
+    const { t, label } = createI18n("es");
+    expect(t("Campaigns")).toBe("Campañas");
+    expect(t("Settings")).toBe("Ajustes");
+    expect(t("{count} campaigns", { count: 3 })).toBe("3 campañas");
+    expect(["SENT", "OWNER", "active", "CUSTOM_STATUS"].map(label)).toEqual([
+      es["Sent"],
+      es["Owner"],
+      es["Active"],
       "CUSTOM_STATUS",
     ]);
   });
