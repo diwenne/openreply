@@ -27,7 +27,8 @@ const createAutomationSchema = z
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
     dmTriggerEnabled: z.boolean().optional().default(false),
-    dmMessage: z.string().min(1).max(1000),
+    // Empty = public-reply-only campaign (no private reply DM).
+    dmMessage: z.string().max(1000),
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -90,7 +91,7 @@ const updateAutomationSchema = z.object({
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   matchAnyWord: z.boolean().optional(),
   dmTriggerEnabled: z.boolean().optional(),
-  dmMessage: z.string().min(1).max(1000).optional(),
+  dmMessage: z.string().max(1000).optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -382,6 +383,16 @@ export async function POST(request: NextRequest) {
   )
     .map((m) => m.trim())
     .filter(Boolean);
+
+  if (
+    !parsed.data.dmMessage.trim() &&
+    !(parsed.data.publicReplyEnabled && publicReplyList.length > 0)
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Set a DM message or enable a public reply" },
+      { status: 400 }
+    );
+  }
 
   const automation = await prisma.automation.create({
     data: {

@@ -407,6 +407,22 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // this run needed. Don't re-send the DM.
     if (!needsDm) continue;
 
+    // Public-reply-only campaign: no DM configured, so the private reply Meta
+    // allows per comment stays unused (free for another campaign or a human).
+    if (!automation.dmMessage.trim()) {
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: { automationId: automation.id, commentId },
+        },
+        data: {
+          status: "SKIPPED_NO_MATCH",
+          matchedKeyword: matchResult.matchedKeyword,
+          errorMessage: "Public-reply-only campaign (no DM configured)",
+        },
+      });
+      continue;
+    }
+
     // Meta allows exactly ONE private reply per comment, ever — across every
     // campaign. When several campaigns match the same comment (duplicated
     // campaigns, or an any-post campaign overlapping a post-specific one), only
