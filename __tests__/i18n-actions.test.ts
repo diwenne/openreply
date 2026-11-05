@@ -33,6 +33,13 @@ describe("language preference", () => {
     expect(t("Settings")).toBe("Настройки");
   });
 
+  it("renders Spanish from the saved cookie", async () => {
+    store.get.mockReturnValue({ value: "es" });
+    const { locale, t } = await getI18n();
+    expect(locale).toBe("es");
+    expect(t("Settings")).toBe("Ajustes");
+  });
+
   it("falls back to English for an invalid cookie", async () => {
     store.get.mockReturnValue({ value: "unsupported" });
     expect((await getI18n()).locale).toBe("en");
