@@ -6,6 +6,7 @@ import {
   ZernioDeliveryUnconfirmedError,
 } from "@/lib/zernio/client";
 import type { InstagramContext, ZernioContext } from "./context";
+import { toMetaMessage, type BuiltMessage } from "@/lib/dm-buttons/payload";
 
 type Button =
   | { type: "url"; title: string; url: string }
@@ -242,6 +243,56 @@ export async function sendDirectMessageWithLinkButton({
     recipientId: userId,
     text: text,
     buttons: linkButtons(buttons),
+  });
+}
+
+/**
+ * Send a message built by buildStageMessage, either as the private reply to a
+ * comment (commentId) or as a direct message (userId). Zernio takes buttons as
+ * url/postback objects; quick replies are never built for it.
+ */
+export async function sendBuiltMessage({
+  context,
+  instagramAccountId,
+  message,
+  commentId,
+  postId,
+  userId,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  message: BuiltMessage;
+  commentId?: string;
+  postId?: string;
+  userId?: string;
+}) {
+  if (!commentId && !userId) throw new Error("sendBuiltMessage needs a commentId or a userId");
+  if (context.provider === "META")
+    return meta.sendMessagePayload(
+      context.accessToken,
+      instagramAccountId,
+      commentId ? { comment_id: commentId } : { id: userId! },
+      toMetaMessage(message)
+    );
+  const buttons: Button[] | undefined =
+    message.kind === "buttons"
+      ? message.buttons.map((button) =>
+          button.type === "web_url"
+            ? { type: "url", title: button.title, url: button.url }
+            : { type: "postback", title: button.title, payload: button.payload }
+        )
+      : message.kind === "quick_replies"
+        ? message.quickReplies.slice(0, 3).map((reply) => ({
+            type: "postback",
+            title: reply.title,
+            payload: reply.payload,
+          }))
+        : undefined;
+  return sendZernioMessage({
+    context,
+    ...(commentId ? { commentId, postId } : { recipientId: userId }),
+    text: message.text,
+    buttons,
   });
 }
 

@@ -451,6 +451,32 @@ export async function sendDirectMessageWithLinkButton(
   return handleResponse(response);
 }
 
+/**
+ * Send any already-built `message` object (text, button template or quick
+ * replies) to a comment (private reply) or to a user by IGSID. Used by
+ * campaigns with custom DM buttons; see lib/dm-buttons/payload.ts.
+ */
+export async function sendMessagePayload(
+  accessToken: string,
+  instagramAccountId: string,
+  recipient: { comment_id: string } | { id: string },
+  message: Record<string, unknown>
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ recipient, message }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
 export async function sendCommentReply(
   accessToken: string,
   commentId: string,

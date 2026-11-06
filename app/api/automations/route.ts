@@ -15,6 +15,18 @@ import {
   syncCampaignLinks,
 } from "@/lib/campaigns/links";
 import { buildReportUrl, generateReportShareSlug } from "@/lib/reports/share";
+import { Prisma } from "@/app/generated/prisma/client";
+import { dmButtonConfigSchema, type DmButtonConfig } from "@/lib/dm-buttons/model";
+import {
+  hasBlockingIssues,
+  validateDmButtonConfig,
+  type DmButtonContext,
+} from "@/lib/dm-buttons/validate";
+import {
+  legacyLabelsFromDmButtons,
+  normalizeDmButtonConfig,
+  syncDmButtonTrackedLinks,
+} from "@/lib/campaigns/dm-buttons";
 import {
   canManageWorkspace,
   getCurrentWorkspaceContext,
@@ -67,6 +79,9 @@ const createAutomationSchema = z
       .optional()
       .nullable(),
     secondaryButtonLabel: z.string().max(20).optional().nullable(),
+    // Custom DM buttons. When set, they replace the fixed button labels and
+    // the tracked link fields above. Null or absent keeps the original flow.
+    dmButtons: dmButtonConfigSchema.optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
@@ -80,12 +95,13 @@ const createAutomationSchema = z
     message: "Add at least one keyword, or match any word",
     path: ["keywords"],
   })
-  // An opening DM needs both a message and a button label.
+  // An opening DM needs both a message and a button label (or, with custom
+  // buttons, its buttons, which are checked separately).
   .refine(
     (d) =>
       !d.openingDmEnabled ||
       (Boolean(d.openingDmMessage?.trim()) &&
-        Boolean(d.openingDmButtonLabel?.trim())),
+        (Boolean(d.dmButtons) || Boolean(d.openingDmButtonLabel?.trim()))),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
   );
 
@@ -129,7 +145,33 @@ const updateAutomationSchema = z.object({
     .optional()
     .nullable(),
   secondaryButtonLabel: z.string().max(20).optional().nullable(),
+  // Undefined leaves custom buttons unchanged, null switches back to the
+  // original fixed buttons, and a config replaces them.
+  dmButtons: dmButtonConfigSchema.optional().nullable(),
 });
+
+/**
+ * Validate custom buttons against Meta's limits for this campaign's flow.
+ * Returns a 400 response when anything blocks saving.
+ */
+function dmButtonErrorResponse(config: DmButtonConfig, context: DmButtonContext) {
+  const issues = validateDmButtonConfig(config, context);
+  if (!hasBlockingIssues(issues)) return null;
+  const errors = issues.filter((issue) => issue.level === "error");
+  return NextResponse.json(
+    {
+      success: false,
+      error: "Invalid DM buttons",
+      details: {
+        fieldErrors: {
+          dmButtons: errors.map((issue) => `${issue.stage}: ${issue.message}`),
+        },
+        dmButtonIssues: errors,
+      },
+    },
+    { status: 400 }
+  );
+}
 
 export async function GET(request: NextRequest) {
   const workspaceId = await getCurrentWorkspaceId();
@@ -351,15 +393,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const linkCreates = buildInitialCampaignLinks({
-    workspaceId,
-    primaryUrl: parsed.data.trackedDestinationUrl,
-    secondaryUrl: parsed.data.secondaryDestinationUrl,
-    secondaryLabel: parsed.data.secondaryButtonLabel,
-  });
-
   const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
     parsed.data;
+
+  const dmButtons = parsed.data.dmButtons
+    ? normalizeDmButtonConfig(parsed.data.dmButtons as DmButtonConfig)
+    : null;
+  if (dmButtons) {
+    const invalid = dmButtonErrorResponse(dmButtons, {
+      openingDmEnabled,
+      requireFollow: parsed.data.requireFollow,
+      dmTriggerEnabled: parsed.data.dmTriggerEnabled,
+      provider: instagramAccount.provider,
+    });
+    if (invalid) return invalid;
+  }
+  const mirroredLabels = dmButtons ? legacyLabelsFromDmButtons(dmButtons) : null;
+
+  // With custom buttons, tracked links come from the reveal URL buttons.
+  const linkCreates = dmButtons
+    ? []
+    : buildInitialCampaignLinks({
+        workspaceId,
+        primaryUrl: parsed.data.trackedDestinationUrl,
+        secondaryUrl: parsed.data.secondaryDestinationUrl,
+        secondaryLabel: parsed.data.secondaryButtonLabel,
+      });
   // A post is only stored for the "specific post" trigger.
   const isSpecificPost = !pendingNextReel && !matchAnyPost;
   const publicReplyList = (
@@ -372,8 +431,7 @@ export async function POST(request: NextRequest) {
     .map((m) => m.trim())
     .filter(Boolean);
 
-  const automation = await prisma.automation.create({
-    data: {
+  const createData = {
       name: parsed.data.name,
       goal: parsed.data.goal,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
@@ -390,15 +448,21 @@ export async function POST(request: NextRequest) {
         ? parsed.data.openingDmMessage || null
         : null,
       openingDmButtonLabel: openingDmEnabled
-        ? parsed.data.openingDmButtonLabel || null
+        ? (mirroredLabels
+            ? mirroredLabels.openingDmButtonLabel
+            : parsed.data.openingDmButtonLabel) || null
         : null,
-      linkButtonLabel: parsed.data.linkButtonLabel || null,
+      linkButtonLabel:
+        (mirroredLabels ? mirroredLabels.linkButtonLabel : parsed.data.linkButtonLabel) ||
+        null,
       requireFollow: parsed.data.requireFollow,
       followPromptMessage: parsed.data.requireFollow
         ? parsed.data.followPromptMessage || null
         : null,
       followPromptButtonLabel: parsed.data.requireFollow
-        ? parsed.data.followPromptButtonLabel || null
+        ? (mirroredLabels
+            ? mirroredLabels.followPromptButtonLabel
+            : parsed.data.followPromptButtonLabel) || null
         : null,
       followUpEnabled: parsed.data.followUpEnabled,
       followUpMessage: parsed.data.followUpEnabled
@@ -422,11 +486,26 @@ export async function POST(request: NextRequest) {
       ...(linkCreates.length > 0
         ? { trackedLinks: { create: linkCreates } }
         : {}),
-    },
-    include: {
-      trackedLinks: true,
-    },
-  });
+  } satisfies Prisma.AutomationUncheckedCreateInput;
+
+  const automation = dmButtons
+    ? await prisma.$transaction(async (tx) => {
+        const created = await tx.automation.create({ data: createData });
+        const synced = await syncDmButtonTrackedLinks(tx, {
+          workspaceId,
+          automationId: created.id,
+          config: dmButtons,
+        });
+        return tx.automation.update({
+          where: { id: created.id },
+          data: { dmButtons: synced as unknown as Prisma.InputJsonValue },
+          include: { trackedLinks: true },
+        });
+      })
+    : await prisma.automation.create({
+        data: createData,
+        include: { trackedLinks: true },
+      });
 
   return NextResponse.json(
     { success: true, data: automation },
@@ -489,8 +568,13 @@ export async function PATCH(request: NextRequest) {
     trackedDestinationUrl,
     secondaryDestinationUrl,
     secondaryButtonLabel,
+    dmButtons: incomingDmButtons,
     ...automationData
   } = parsed.data;
+
+  const dmButtons = incomingDmButtons
+    ? normalizeDmButtonConfig(incomingDmButtons as DmButtonConfig)
+    : incomingDmButtons;
 
   // Moving a campaign to another account: it must be one of this workspace's.
   if (
@@ -542,14 +626,56 @@ export async function PATCH(request: NextRequest) {
     automationData.publicReplyMessage = null;
   }
 
+  if (dmButtons) {
+    const account = await prisma.instagramAccount.findFirst({
+      where: {
+        id: automationData.instagramAccountId ?? existing.instagramAccountId,
+        workspaceId,
+      },
+      select: { provider: true },
+    });
+    const invalid = dmButtonErrorResponse(dmButtons, {
+      openingDmEnabled: automationData.openingDmEnabled ?? existing.openingDmEnabled,
+      requireFollow: automationData.requireFollow ?? existing.requireFollow,
+      dmTriggerEnabled: automationData.dmTriggerEnabled ?? existing.dmTriggerEnabled,
+      provider: account?.provider ?? "META",
+    });
+    if (invalid) return invalid;
+
+    // Keep the single-label fields in step with the buttons.
+    const labels = legacyLabelsFromDmButtons(dmButtons);
+    automationData.linkButtonLabel = labels.linkButtonLabel;
+    if ((automationData.openingDmEnabled ?? existing.openingDmEnabled) !== false)
+      automationData.openingDmButtonLabel = labels.openingDmButtonLabel;
+    if ((automationData.requireFollow ?? existing.requireFollow) !== false)
+      automationData.followPromptButtonLabel = labels.followPromptButtonLabel;
+  }
+
   // One transaction, so a save never lands half applied. Updating the campaign
   // first locks its row, which makes a second save of the same campaign wait
   // for this one before it reads the links.
   const updated = await prisma.$transaction(async (tx) => {
     const campaign = await tx.automation.update({
       where: { id: automationId },
-      data: automationData,
+      data: {
+        ...automationData,
+        ...(dmButtons === null ? { dmButtons: Prisma.DbNull } : {}),
+      },
     });
+
+    if (dmButtons) {
+      // Custom buttons own the tracked links; the legacy link fields are
+      // ignored so the two cannot overwrite each other.
+      const synced = await syncDmButtonTrackedLinks(tx, {
+        workspaceId,
+        automationId,
+        config: dmButtons,
+      });
+      return tx.automation.update({
+        where: { id: automationId },
+        data: { dmButtons: synced as unknown as Prisma.InputJsonValue },
+      });
+    }
 
     await syncCampaignLinks(tx, {
       workspaceId,

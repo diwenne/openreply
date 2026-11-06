@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import {
+  describeSignatureFailure,
   parseCommentEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
@@ -30,7 +31,13 @@ export async function POST(request: NextRequest) {
   if (!verifyWebhookSignature(rawBody, signature)) {
     // Record the attempt so a signature mismatch is visible rather than a
     // silent 401. This is the common symptom of FACEBOOK_APP_SECRET being
-    // set to the wrong app's secret for the webhook's signing key.
+    // set to the wrong app's secret for the webhook's signing key, or of a
+    // second Meta app posting to this URL. The details say which.
+    const details = describeSignatureFailure(rawBody, signature);
+    console.warn(
+      "[Webhook] Signature verification failed",
+      JSON.stringify({ ...details, userAgent: request.headers.get("user-agent") })
+    );
     await prisma.operationalEvent
       .create({
         data: {
@@ -38,8 +45,8 @@ export async function POST(request: NextRequest) {
           level: "WARNING",
           message: "Webhook signature verification failed",
           payload: {
-            hadSignatureHeader: Boolean(signature),
-            bodyLength: rawBody.length,
+            ...details,
+            userAgent: request.headers.get("user-agent"),
             bodyPreview: rawBody.slice(0, 200),
           },
         },

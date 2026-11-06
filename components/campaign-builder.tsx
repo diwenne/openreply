@@ -19,6 +19,20 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
 import { readCache, writeCache } from "@/lib/client-cache";
+import DmButtonEditor from "@/components/dm-button-editor";
+import {
+  deriveDmButtonsFromLegacy,
+  instagramProfileUrl,
+  newButtonId,
+  parseDmButtonConfig,
+  type DmButton,
+  type DmButtonConfig,
+  type DmStage,
+} from "@/lib/dm-buttons/model";
+import {
+  hasBlockingIssues,
+  validateDmButtonConfig,
+} from "@/lib/dm-buttons/validate";
 import {
   IMPORT_QUEUE_KEY,
   IMPORT_ACCOUNT_KEY,
@@ -55,7 +69,13 @@ interface LoadedCampaign {
   publicReplyMessages: string[];
   isActive: boolean;
   instagramAccountId: string;
-  trackedLinks?: { destinationUrl: string; label?: string | null }[];
+  trackedLinks?: { slug?: string; destinationUrl: string; label?: string | null }[];
+  dmButtons?: unknown;
+}
+
+// No preset buttons: every button, its text and its link come from the user.
+function emptyDmButtons(): DmButtonConfig {
+  return { version: 1, opening: [], followPrompt: [], reveal: [] };
 }
 
 interface CampaignBuilderProps {
@@ -168,22 +188,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
-  const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
 
   const [dmMessage, setDmMessage] = useState("");
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
-  const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
-  const [secondLinkOpen, setSecondLinkOpen] = useState(false);
-  const [secondaryDestinationUrl, setSecondaryDestinationUrl] = useState("");
-  const [secondaryButtonLabel, setSecondaryButtonLabel] = useState("Open link");
   const [requireFollow, setRequireFollow] = useState(false);
   const [followPromptMessage, setFollowPromptMessage] = useState("");
-  const [followPromptButtonLabel, setFollowPromptButtonLabel] =
-    useState("i'm following");
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpDelayMinutes, setFollowUpDelayMinutes] = useState(0);
+
+  // The buttons on each DM, added and written by the user.
+  const [dmButtons, setDmButtons] = useState<DmButtonConfig>(emptyDmButtons);
 
   const [previewTab, setPreviewTab] = useState<PreviewTab>("dm");
 
@@ -274,25 +288,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         );
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
-        setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
-        setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
-        const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
-        setTrackedDestinationUrl(link);
-        setLinkOpen(Boolean(link));
-        const secondLink = c.trackedLinks?.[1];
-        setSecondaryDestinationUrl(secondLink?.destinationUrl ?? "");
-        setSecondaryButtonLabel(secondLink?.label ?? "Open link");
-        setSecondLinkOpen(Boolean(secondLink?.destinationUrl));
         setRequireFollow(c.requireFollow ?? false);
         setFollowPromptMessage(c.followPromptMessage ?? "");
-        setFollowPromptButtonLabel(
-          c.followPromptButtonLabel ?? "i'm following"
-        );
         setFollowUpEnabled(c.followUpEnabled ?? false);
         setFollowUpMessage(c.followUpMessage ?? "");
         setFollowUpDelayMinutes(c.followUpDelayMinutes ?? 0);
+        // A campaign saved before custom buttons shows the buttons it sends
+        // today (its own labels and links), so saving it changes nothing.
+        setDmButtons(parseDmButtonConfig(c.dmButtons) ?? deriveDmButtonsFromLegacy(c));
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -340,12 +345,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     const hasOpening = Boolean(row.openingDmMessage);
     setOpeningDmEnabled(hasOpening);
     setOpeningDmMessage(row.openingDmMessage ?? "");
-    setOpeningDmButtonLabel(
-      row.openingDmButtonLabel || (hasOpening ? "Send link" : "")
-    );
-    const link = row.trackedUrl ?? "";
-    setTrackedDestinationUrl(link);
-    setLinkOpen(Boolean(link));
+    // Only what the CSV row provides; any missing button text is typed in.
+    const link = row.trackedUrl?.trim() ?? "";
+    setDmButtons({
+      version: 1,
+      opening:
+        hasOpening && row.openingDmButtonLabel
+          ? [{ id: newButtonId(), type: "quick_reply", label: row.openingDmButtonLabel.slice(0, 20), enabled: true, action: "reveal" }]
+          : [],
+      followPrompt: [],
+      reveal: link
+        ? [{ id: newButtonId(), type: "url", label: "", enabled: true, url: link, track: true }]
+        : [],
+    });
     setError(null);
   }
 
@@ -369,8 +381,24 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }, [mode]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const username =
-    accounts.find((a) => a.id === selectedAccountId)?.username ?? "yourbrand";
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+  const username = selectedAccount?.username ?? "yourbrand";
+  const provider = selectedAccount?.provider ?? "META";
+
+  // Cheap to run; the React Compiler memoizes it.
+  const dmButtonIssues = validateDmButtonConfig(dmButtons, {
+    openingDmEnabled,
+    requireFollow,
+    dmTriggerEnabled,
+    provider,
+  });
+
+  function setStageButtons(stage: DmStage, buttons: DmButton[]) {
+    setDmButtons((current) => ({ ...current, [stage]: buttons }));
+  }
+
+  const stageIssues = (stage: DmStage) =>
+    dmButtonIssues.filter((issue) => issue.stage === stage);
 
   function handlePostSelect(
     id: string,
@@ -384,10 +412,6 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setPostCaption(caption ?? "");
   }
 
-  function ensureLinkToken() {
-    setDmMessage((cur) => (cur.includes("{link}") ? cur : `${cur.trim()} {link}`.trim()));
-  }
-
   async function handleSubmit(activeValue: boolean) {
     setError(null);
 
@@ -397,8 +421,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     if (matchMode === "specific" && keywords.length === 0)
       return setError(t("Add at least one keyword, or switch to any word."));
     if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
+    if (
+      openingDmEnabled &&
+      !openingDmMessage.trim()
+    )
       return setError(t("Your opening DM needs a message and a button label."));
+    if (hasBlockingIssues(dmButtonIssues))
+      return setError(t("Fix the button errors before saving."));
 
     setSaving(true);
 
@@ -416,20 +445,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       dmMessage,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
-      openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
       publicReplyEnabled,
       publicReplyMessages: publicReplyEnabled
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
         : [],
-      trackedDestinationUrl: trackedDestinationUrl.trim() || "",
-      linkButtonLabel: linkButtonLabel.trim() || "Open link",
-      secondaryDestinationUrl: secondaryDestinationUrl.trim() || "",
-      secondaryButtonLabel: secondaryButtonLabel.trim() || "Open link",
+      // The server builds the tracked links from the link DM's URL buttons.
+      dmButtons,
       requireFollow,
       followPromptMessage: requireFollow ? followPromptMessage.trim() : "",
-      followPromptButtonLabel: requireFollow
-        ? followPromptButtonLabel.trim() || "i'm following"
-        : "",
       followUpEnabled,
       followUpMessage: followUpEnabled ? followUpMessage.trim() : "",
       followUpDelayMinutes: followUpEnabled ? followUpDelayMinutes : 0,
@@ -833,13 +856,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
-                <input
-                  value={openingDmButtonLabel}
-                  onChange={(e) => setOpeningDmButtonLabel(e.target.value)}
-                  placeholder={t("Send me the link")}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={64}
-                />
+                <DmButtonEditor
+                    stage="opening"
+                    buttons={dmButtons.opening}
+                    onChange={(buttons) => setStageButtons("opening", buttons)}
+                    issues={stageIssues("opening")}
+                    profileUrl={instagramProfileUrl(username)}
+                  />
               </div>
             )}
           </div>
@@ -863,13 +886,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
                   maxLength={1000}
                 />
-                <input
-                  value={followPromptButtonLabel}
-                  onChange={(e) => setFollowPromptButtonLabel(e.target.value)}
-                  placeholder={t("i'm following")}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={20}
-                />
+                <DmButtonEditor
+                    stage="followPrompt"
+                    buttons={dmButtons.followPrompt}
+                    onChange={(buttons) => setStageButtons("followPrompt", buttons)}
+                    issues={stageIssues("followPrompt")}
+                    profileUrl={instagramProfileUrl(username)}
+                  />
                 <p className="text-xs text-muted">
                   {t("We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we send it anyway.")}
                 </p>
@@ -889,57 +912,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
               maxLength={1000}
             />
-            {linkOpen ? (
-              <div className="space-y-2">
-                <input
-                  value={trackedDestinationUrl}
-                  onChange={(e) => setTrackedDestinationUrl(e.target.value)}
-                  onBlur={ensureLinkToken}
-                  placeholder="https://yourlink.com/offer"
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                />
-                <input
-                  value={linkButtonLabel}
-                  onChange={(e) => setLinkButtonLabel(e.target.value)}
-                  placeholder={t("Button label (e.g. Open link)")}
-                  maxLength={20}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                />
-                {secondLinkOpen ? (
-                  <div className="space-y-2 border-t border-border pt-2">
-                    <input
-                      value={secondaryDestinationUrl}
-                      onChange={(e) => setSecondaryDestinationUrl(e.target.value)}
-                      placeholder="https://yourlink.com/second"
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                    />
-                    <input
-                      value={secondaryButtonLabel}
-                      onChange={(e) => setSecondaryButtonLabel(e.target.value)}
-                      placeholder={t("Second button label")}
-                      maxLength={20}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                    />
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setSecondLinkOpen(true)}
-                    className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
-                  >
-                    {t("+ Add A Second Link")}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setLinkOpen(true)}
-                className="w-full rounded-lg border border-border py-2 text-sm text-muted hover:text-foreground"
-              >
-                {t("+ Add A Link")}
-              </button>
-            )}
+            <DmButtonEditor
+              stage="reveal"
+              buttons={dmButtons.reveal}
+              onChange={(buttons) => setStageButtons("reveal", buttons)}
+              issues={stageIssues("reveal")}
+              profileUrl={instagramProfileUrl(username)}
+            />
             <p className="text-xs text-muted">
               {"{link}"} {t("inserts the tracked link;")} {"{username}"} {t("personalizes.")}
             </p>
@@ -1011,21 +990,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
             openingDmEnabled={openingDmEnabled}
             openingDmMessage={openingDmMessage}
-            openingDmButtonLabel={openingDmButtonLabel}
+            openingDmButtonLabel=""
             revealMessage={dmMessage}
-            hasLink={Boolean(trackedDestinationUrl.trim())}
-            linkButtonLabel={linkButtonLabel || "Open link"}
-            linkUrl={trackedDestinationUrl.trim() || undefined}
-            hasSecondLink={
-              secondLinkOpen && Boolean(secondaryDestinationUrl.trim())
-            }
-            secondLinkButtonLabel={secondaryButtonLabel || "Open link"}
+            hasLink={false}
+            linkButtonLabel=""
+            hasSecondLink={false}
+            secondLinkButtonLabel=""
             requireFollow={requireFollow}
             followPromptMessage={followPromptMessage}
-            followPromptButtonLabel={followPromptButtonLabel || "i'm following"}
+            followPromptButtonLabel=""
             followUpEnabled={followUpEnabled}
             followUpMessage={followUpMessage}
             followUpDelayMinutes={followUpDelayMinutes}
+            customDm={{ config: dmButtons, provider }}
           />
         </div>
       </div>

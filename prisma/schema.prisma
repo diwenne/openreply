@@ -214,6 +214,9 @@ model Automation {
   // Minutes to wait after the link is delivered before sending the follow-up.
   // 0 sends it right away.
   followUpDelayMinutes Int @default(0)
+  // Custom DM buttons per stage (opening / followPrompt / reveal), see
+  // lib/dm-buttons/model.ts. Null keeps the original fixed-button behavior.
+  dmButtons Json?
   publicReplyEnabled Boolean @default(false)
   publicReplyMessage String?
   publicReplyMessages String[] @default([])

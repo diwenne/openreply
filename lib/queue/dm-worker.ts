@@ -33,6 +33,7 @@ import {
   sendPrivateReply,
   sendPrivateReplyWithButton,
   sendPrivateReplyWithLinkButton,
+  sendBuiltMessage,
 } from "@/lib/instagram/provider";
 import {
   createInstagramContext,
@@ -53,6 +54,21 @@ import {
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { hashRecipientId } from "@/lib/tracking/server";
+import {
+  activeButtons,
+  findButton,
+  parseDmButtonConfig,
+  type DmButtonConfig,
+  type DmStage,
+} from "@/lib/dm-buttons/model";
+import {
+  buildStageMessage,
+  followConfirmPayload,
+  parseQuickReplyPayload,
+  toInlineFallbackText,
+  type BuiltMessage,
+  type DeliveryChannel,
+} from "@/lib/dm-buttons/payload";
 
 import { ZernioApiError } from "@/lib/zernio/client";
 
@@ -185,11 +201,140 @@ function buildInlineLinkFallback(
 }
 
 type RevealAutomation = {
+  id: string;
   dmMessage: string;
   linkButtonLabel: string | null;
+  dmButtons?: unknown;
   trackedLinks: WorkerTrackedLink[];
   instagramAccount: { instagramId: string };
 };
+
+const DEFAULT_FOLLOW_PROMPT =
+  "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over";
+
+/**
+ * Build one stage of a campaign with custom buttons. Reveal URL buttons with a
+ * tracked link of this campaign go through it (per-recipient token included);
+ * every other URL is sent as entered.
+ */
+function buildCustomStage({
+  automation,
+  config,
+  stage,
+  text,
+  channel,
+  context,
+  recipientId,
+}: {
+  automation: { id: string; trackedLinks: WorkerTrackedLink[] };
+  config: DmButtonConfig;
+  stage: DmStage;
+  text: string;
+  channel: DeliveryChannel;
+  context: InstagramContext;
+  recipientId: string;
+}): BuiltMessage {
+  const slugs = new Set(automation.trackedLinks.map((link) => link.slug));
+  const recipientToken = hashRecipientId(recipientId);
+  return buildStageMessage({
+    stage,
+    buttons: config[stage],
+    text,
+    automationId: automation.id,
+    channel,
+    provider: context.provider,
+    resolveUrl: (button) =>
+      button.type === "url" && button.trackedLinkSlug && slugs.has(button.trackedLinkSlug)
+        ? buildTrackedUrl(button.trackedLinkSlug, undefined, recipientToken)
+        : button.url ?? "",
+  });
+}
+
+/**
+ * Send a custom-button campaign's reveal, to a comment (private reply) or a
+ * user. Mirrors the original reveal: with buttons, `{link}` is stripped from
+ * the text and a rejected template falls back to text with the links inline;
+ * without buttons, `{link}` is replaced by the first enabled tracked link.
+ */
+async function sendCustomReveal({
+  context,
+  automation,
+  config,
+  commenterName,
+  recipientId,
+  commentId,
+  postId,
+  logContext,
+}: {
+  context: InstagramContext;
+  automation: RevealAutomation;
+  config: DmButtonConfig;
+  commenterName: string | null | undefined;
+  recipientId: string;
+  commentId?: string;
+  postId?: string;
+  logContext: string;
+}): Promise<void> {
+  const target = commentId
+    ? { commentId, postId }
+    : { userId: recipientId };
+  const channel: DeliveryChannel = commentId ? "private_reply" : "direct";
+  const instagramAccountId = automation.instagramAccount.instagramId;
+
+  if (activeButtons(config.reveal).length === 0) {
+    const enabledSlugs = new Set(
+      config.reveal
+        .filter((b) => b.enabled && b.type === "url" && b.trackedLinkSlug)
+        .map((b) => b.trackedLinkSlug)
+    );
+    const text = renderMessageWithTracking({
+      message: automation.dmMessage,
+      commenterName,
+      trackedLinks: automation.trackedLinks.filter((link) => enabledSlugs.has(link.slug)),
+      recipientToken: hashRecipientId(recipientId),
+    });
+    await sendBuiltMessage({
+      context,
+      instagramAccountId,
+      ...target,
+      message: { kind: "text", text: renderMessageWithoutLink({ message: text, commenterName }) || text },
+    });
+    return;
+  }
+
+  const bodyText =
+    renderMessageWithoutLink({ message: automation.dmMessage, commenterName }) ||
+    "Here's your link:";
+  const message = buildCustomStage({
+    automation,
+    config,
+    stage: "reveal",
+    text: bodyText,
+    channel,
+    context,
+    recipientId,
+  });
+
+  try {
+    await sendBuiltMessage({ context, instagramAccountId, ...target, message });
+  } catch (buttonError) {
+    if (message.kind !== "buttons" || !isTemplateRejection(buttonError)) throw buttonError;
+    console.log(
+      `[DM Worker] Custom button template rejected in ${logContext}, falling back to inline links:`,
+      formatError(buttonError)
+    );
+    try {
+      await sendBuiltMessage({
+        context,
+        instagramAccountId,
+        ...target,
+        message: { kind: "text", text: toInlineFallbackText(message) },
+      });
+    } catch (fallbackError) {
+      throw classifySendError(fallbackError);
+    }
+  }
+}
 
 /**
  * Deliver a campaign's reveal message as a direct message. Shared by the
@@ -209,6 +354,19 @@ async function sendRevealDirectMessage({
   commenterName: string | null;
   context: string;
 }): Promise<void> {
+  const config = parseDmButtonConfig(automation.dmButtons);
+  if (config) {
+    await sendCustomReveal({
+      context: accessToken,
+      automation,
+      config,
+      commenterName,
+      recipientId: userId,
+      logContext: context,
+    });
+    return;
+  }
+
   if (automation.trackedLinks.length === 0) {
     await sendDirectMessage({
       context: accessToken,
@@ -627,10 +785,13 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // With an opening DM, the private reply is a button message; tapping it
     // fires a postback that delivers the reveal (see processPostback). Without
     // one, we send the reveal text directly as today.
+    const buttonConfig = parseDmButtonConfig(automation.dmButtons);
     const useOpeningDm =
       automation.openingDmEnabled &&
       Boolean(automation.openingDmMessage) &&
-      Boolean(automation.openingDmButtonLabel);
+      (buttonConfig
+        ? activeButtons(buttonConfig.opening).length > 0
+        : Boolean(automation.openingDmButtonLabel));
 
     // Follow-gating: the link is revealed only after a follow. When an opening
     // DM is enabled it comes FIRST, and its button routes into the follow check
@@ -664,7 +825,47 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     }
     let delivered = false;
     try {
-      if (useOpeningDm) {
+      if (buttonConfig) {
+        if (useOpeningDm || sendFollowPrompt) {
+          const stage: DmStage = useOpeningDm ? "opening" : "followPrompt";
+          const text = useOpeningDm
+            ? renderMessageWithTracking({
+                message: automation.openingDmMessage as string,
+                commenterName,
+                trackedLinks: [],
+              })
+            : renderMessageWithoutLink({
+                message: automation.followPromptMessage || DEFAULT_FOLLOW_PROMPT,
+                commenterName,
+              });
+          await sendBuiltMessage({
+            context: accessToken,
+            instagramAccountId: automation.instagramAccount.instagramId,
+            commentId,
+            postId: mediaId,
+            message: buildCustomStage({
+              automation,
+              config: buttonConfig,
+              stage,
+              text,
+              channel: "private_reply",
+              context: accessToken,
+              recipientId: commenterId,
+            }),
+          });
+        } else {
+          await sendCustomReveal({
+            context: accessToken,
+            automation,
+            config: buttonConfig,
+            commenterName,
+            recipientId: commenterId,
+            commentId,
+            postId: mediaId,
+            logContext: "private reply",
+          });
+        }
+      } else if (useOpeningDm) {
         const openingText = renderMessageWithTracking({
           message: automation.openingDmMessage as string,
           commenterName,
@@ -886,8 +1087,94 @@ async function sendFollowRecheckAck({
  * The postback payload is `reveal:<automationId>`; the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
  */
+/**
+ * A tap on a custom Quick Reply (sent as a real quick reply or, where Instagram
+ * needs a button template, as a postback button). "reveal" continues exactly
+ * like the original opening button; "reply" sends the button's own message.
+ * Returns the payload to continue with, or null when the tap is handled.
+ */
+async function resolveQuickReplyTap(
+  job: Job<ProcessPostbackJob>,
+  target: { automationId: string; buttonId: string }
+): Promise<string | null> {
+  const { instagramAccountId, userId } = job.data;
+  const automation = await prisma.automation.findFirst({
+    where: { id: target.automationId, isActive: true, ...connectionScope(job.data) },
+    include: { instagramAccount: true },
+  });
+  if (
+    !automation ||
+    automation.instagramAccount.instagramId !== instagramAccountId ||
+    !hasInstagramCredentials(automation.instagramAccount)
+  )
+    return null;
+
+  const config = parseDmButtonConfig(automation.dmButtons);
+  const found = config ? findButton(config, target.buttonId) : null;
+  if (!found || found.button.type !== "quick_reply" || !found.button.enabled) return null;
+
+  if ((found.button.action ?? "reveal") === "reveal") {
+    // Same payloads the original opening button and follow prompt used.
+    return automation.requireFollow
+      ? followConfirmPayload(automation.id, found.stage)
+      : `reveal:${automation.id}${found.stage === "opening" ? ":open" : ""}`;
+  }
+
+  const replyText = found.button.replyText?.trim();
+  if (!replyText) return null;
+
+  let context: InstagramContext;
+  try {
+    context = await createInstagramContext(
+      automation.instagramAccount,
+      `${job.id}:${automation.id}`
+    );
+  } catch {
+    return null;
+  }
+  const commenterName = await resolveRecipientName({
+    context,
+    workspaceId: automation.workspaceId,
+    recipientId: userId,
+  });
+  const operationId = createHash("sha256")
+    .update(
+      JSON.stringify([
+        automation.instagramAccountId,
+        automation.id,
+        userId,
+        job.data.mid ?? job.id ?? job.data.payload,
+        "qr-reply",
+      ])
+    )
+    .digest("hex");
+  try {
+    await sendPostbackOnce({
+      operationId,
+      send: () =>
+        sendDirectMessage({
+          context,
+          instagramAccountId: automation.instagramAccount.instagramId,
+          userId,
+          message: renderMessageWithoutLink({ message: replyText, commenterName }),
+        }),
+    });
+  } catch (error) {
+    console.log("[DM Worker] Failed to send quick reply response:", formatError(error));
+  }
+  return null;
+}
+
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
-  const { instagramAccountId, userId, payload, fallback } = job.data;
+  const { instagramAccountId, userId, fallback } = job.data;
+  let { payload } = job.data;
+
+  const quickReply = parseQuickReplyPayload(payload);
+  if (quickReply) {
+    const next = await resolveQuickReplyTap(job, quickReply);
+    if (!next) return;
+    payload = next;
+  }
 
   const isFollowCheck = payload.startsWith("followcheck:");
   if (!isFollowCheck && !payload.startsWith("reveal:")) return;
@@ -1057,10 +1344,27 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
         commenterName,
       });
+      const promptConfig = parseDmButtonConfig(automation.dmButtons);
       try {
         await sendPostbackOnce({
           operationId,
           send: () =>
+            promptConfig
+              ? sendBuiltMessage({
+                  context: accessToken,
+                  instagramAccountId: automation.instagramAccount.instagramId,
+                  userId,
+                  message: buildCustomStage({
+                    automation,
+                    config: promptConfig,
+                    stage: "followPrompt",
+                    text: promptText,
+                    channel: "direct",
+                    context: accessToken,
+                    recipientId: userId,
+                  }),
+                })
+              :
             sendDirectMessageWithButton({
               context: accessToken,
               instagramAccountId: automation.instagramAccount.instagramId,
@@ -1438,7 +1742,28 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     }
 
     try {
-      if (sendFollowPrompt) {
+      const promptConfig = parseDmButtonConfig(automation.dmButtons);
+      if (sendFollowPrompt && promptConfig) {
+        await sendBuiltMessage({
+          context: accessToken,
+          instagramAccountId: automation.instagramAccount.instagramId,
+          userId: senderId,
+          message: buildCustomStage({
+            automation,
+            config: promptConfig,
+            stage: "followPrompt",
+            text: renderMessageWithoutLink({
+              message:
+                automation.followPromptMessage ||
+                "Almost there! Follow me and tap the button below to grab your link 💛",
+              commenterName,
+            }),
+            channel: "direct",
+            context: accessToken,
+            recipientId: senderId,
+          }),
+        });
+      } else if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
           message:
             automation.followPromptMessage ||

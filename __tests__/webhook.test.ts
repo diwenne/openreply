@@ -515,3 +515,27 @@ describe("parseReadEvents", () => {
     expect(parseReadEvents(payload)).toHaveLength(0);
   });
 });
+
+describe("describeSignatureFailure", () => {
+  it("names the event kinds and spots a secret that only matches when trimmed", async () => {
+    const { createHmac } = await import("crypto");
+    const { describeSignatureFailure } = await import("@/lib/meta/webhook");
+    const previous = process.env.INSTAGRAM_APP_SECRET;
+    process.env.INSTAGRAM_APP_SECRET = "secret123\n";
+    const body = JSON.stringify({
+      object: "instagram",
+      entry: [{ id: "ig1", messaging: [{ sender: { id: "u" }, recipient: { id: "ig1" }, read: { mid: "m" } }] }],
+    });
+    const signature = "sha256=" + createHmac("sha256", "secret123").update(body).digest("hex");
+    const details = describeSignatureFailure(body, signature);
+    process.env.INSTAGRAM_APP_SECRET = previous;
+    expect(details).toMatchObject({
+      hadSignatureHeader: true,
+      signatureFormatOk: true,
+      trimmedSecretMatches: ["INSTAGRAM_APP_SECRET"],
+      object: "instagram",
+      entryIds: ["ig1"],
+      eventKinds: ["messaging.read"],
+    });
+  });
+});

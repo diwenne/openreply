@@ -1,6 +1,18 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n/provider";
+import {
+  activeButtons,
+  isAdvancingButton,
+  type DmButtonConfig,
+  type DmStage,
+} from "@/lib/dm-buttons/model";
+import {
+  buildStageMessage,
+  type BuiltMessage,
+  type MessagingProvider,
+} from "@/lib/dm-buttons/payload";
+import { stageCommentChannel } from "@/lib/dm-buttons/validate";
 
 
 /* eslint-disable @next/next/no-img-element */
@@ -43,9 +55,14 @@ interface CampaignPreviewProps {
   followUpEnabled: boolean;
   followUpMessage: string;
   followUpDelayMinutes?: number;
+  // Custom DM buttons. When set, the DM thread renders each stage from the
+  // same payload builder the worker sends with.
+  customDm?: { config: DmButtonConfig; provider: MessagingProvider };
 }
 
 const SAMPLE_USER = "username";
+const DEFAULT_FOLLOW_PROMPT =
+  "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over";
 
 /* ----------------------------- icons ----------------------------- */
 
@@ -309,6 +326,138 @@ function CommentsScreen({
   );
 }
 
+/** One sent message exactly as built for Instagram. */
+function BuiltBubble({
+  message,
+  avatarUrl,
+  emptyText,
+}: {
+  message: BuiltMessage;
+  avatarUrl: string | null;
+  emptyText: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-end gap-2">
+        <Avatar url={avatarUrl} size={24} />
+        <div className="max-w-[80%] overflow-hidden rounded-2xl rounded-bl-md bg-zinc-800">
+          <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">
+            {message.text || emptyText}
+          </p>
+          {message.kind === "buttons" &&
+            message.buttons.map((button) => (
+              <div
+                key={button.buttonId}
+                className="mx-1.5 mb-1.5 rounded-xl bg-zinc-700 px-4 py-1.5 text-center text-sm font-medium text-white"
+              >
+                {button.title || t("Button label")}
+              </div>
+            ))}
+        </div>
+      </div>
+      {message.kind === "quick_replies" && (
+        <div className="flex flex-wrap justify-end gap-1.5 pl-8">
+          {message.quickReplies.map((reply) => (
+            <span
+              key={reply.buttonId}
+              className="rounded-full bg-zinc-700 px-3 py-1 text-xs text-white"
+            >
+              {reply.title || t("Button label")}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TapBubble({ label }: { label: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">{label}</div>
+    </div>
+  );
+}
+
+function CustomDmThread({
+  customDm,
+  avatarUrl,
+  thread,
+  openingDmEnabled,
+  openingDmMessage,
+  requireFollow,
+  followPromptMessage,
+  revealMessage,
+}: {
+  customDm: NonNullable<CampaignPreviewProps["customDm"]>;
+  avatarUrl: string | null;
+  thread: "comment" | "dmTrigger";
+  openingDmEnabled: boolean;
+  openingDmMessage: string;
+  requireFollow: boolean;
+  followPromptMessage: string;
+  revealMessage: string;
+}) {
+  const { t } = useI18n();
+  const { config, provider } = customDm;
+  const context = { openingDmEnabled, requireFollow };
+  const personalize = (text: string) => text.replace(/\{username\}/gi, SAMPLE_USER);
+
+  const build = (stage: DmStage, text: string) =>
+    buildStageMessage({
+      stage,
+      buttons: config[stage],
+      text,
+      automationId: "preview",
+      channel: thread === "dmTrigger" ? "direct" : stageCommentChannel(stage, context),
+      provider,
+    });
+
+  const revealHasButtons = activeButtons(config.reveal).length > 0;
+  const revealUrl = config.reveal.find((b) => b.enabled && b.type === "url" && b.track !== false)?.url;
+  const revealText = revealHasButtons
+    ? personalize(revealMessage).replace(/\s*\{link\}\s*/gi, " ").trim() || "Here's your link:"
+    : personalize(revealMessage).replace(/\{link\}/gi, revealUrl || "{link}");
+
+  const tapLabel = (stage: DmStage) =>
+    activeButtons(config[stage]).find(isAdvancingButton)?.label;
+
+  const showOpening = thread === "comment" && openingDmEnabled;
+  const openingTap = tapLabel("opening");
+  const promptTap = tapLabel("followPrompt");
+
+  return (
+    <>
+      {showOpening && (
+        <>
+          <BuiltBubble
+            message={build("opening", personalize(openingDmMessage))}
+            avatarUrl={avatarUrl}
+            emptyText={t("Your opening message…")}
+          />
+          {openingTap && <TapBubble label={openingTap} />}
+        </>
+      )}
+      {requireFollow && (
+        <>
+          <BuiltBubble
+            message={build("followPrompt", personalize(followPromptMessage || DEFAULT_FOLLOW_PROMPT))}
+            avatarUrl={avatarUrl}
+            emptyText=""
+          />
+          {promptTap && <TapBubble label={promptTap} />}
+        </>
+      )}
+      <BuiltBubble
+        message={build("reveal", revealText)}
+        avatarUrl={avatarUrl}
+        emptyText={t("Write a message")}
+      />
+    </>
+  );
+}
+
 function DmScreen({
   username,
   avatarUrl,
@@ -328,6 +477,8 @@ function DmScreen({
   followUpDelayMinutes = 0,
   linkUrl,
   inboundMessage,
+  customDm,
+  thread = "comment",
 }: {
   username: string;
   avatarUrl: string | null;
@@ -348,6 +499,8 @@ function DmScreen({
   followUpDelayMinutes?: number;
   // Present on the keyword-trigger thread: the DM the user sends to start it.
   inboundMessage?: string;
+  customDm?: CampaignPreviewProps["customDm"];
+  thread?: "comment" | "dmTrigger";
 }) {
   const { t } = useI18n();
   return (
@@ -363,7 +516,8 @@ function DmScreen({
         </span>
       </div>
 
-      <div className="flex-1 space-y-3 px-3 py-4">
+      {/* Scrolls when a long flow outgrows the fixed phone frame. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 [scrollbar-width:none]">
         {inboundMessage !== undefined && (
           <div className="flex justify-end">
             <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
@@ -371,7 +525,19 @@ function DmScreen({
             </div>
           </div>
         )}
-        {openingDmEnabled && (
+        {customDm && (
+          <CustomDmThread
+            customDm={customDm}
+            avatarUrl={avatarUrl}
+            thread={thread}
+            openingDmEnabled={openingDmEnabled}
+            openingDmMessage={openingDmMessage}
+            requireFollow={requireFollow}
+            followPromptMessage={followPromptMessage}
+            revealMessage={revealMessage}
+          />
+        )}
+        {!customDm && openingDmEnabled && (
           <>
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
@@ -389,7 +555,7 @@ function DmScreen({
             </div>
           </>
         )}
-        {requireFollow && (
+        {!customDm && requireFollow && (
           <>
             <div className="flex items-end gap-2">
               <Avatar url={avatarUrl} size={24} />
@@ -410,7 +576,7 @@ function DmScreen({
             </div>
           </>
         )}
-        {(() => {
+        {!customDm && (() => {
           const resolved = revealMessage.replace(/\{username\}/g, SAMPLE_USER);
           const hasToken = resolved.includes("{link}");
           const showCard = hasLink && hasToken;
@@ -535,6 +701,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             followUpMessage={props.followUpMessage}
             followUpDelayMinutes={props.followUpDelayMinutes}
             linkUrl={props.linkUrl}
+            customDm={props.customDm}
           />
         )}
         {activeTab === "dmTrigger" && (
@@ -558,6 +725,8 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             followUpDelayMinutes={props.followUpDelayMinutes}
             linkUrl={props.linkUrl}
             inboundMessage={props.sampleComment}
+            customDm={props.customDm}
+            thread="dmTrigger"
           />
         )}
       </Phone>

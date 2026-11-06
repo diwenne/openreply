@@ -32,6 +32,58 @@ export function verifyWebhookSignature(
   });
 }
 
+/**
+ * Why a webhook failed signature verification, without revealing any secret:
+ * which kind of event it was, and whether a configured secret only matches
+ * once surrounding whitespace is trimmed (a common copy-paste mistake).
+ * Used to tell a second app or subscription posting to this URL apart from a
+ * misconfigured secret.
+ */
+export function describeSignatureFailure(payload: string, signature: string | null) {
+  const secrets = {
+    FACEBOOK_APP_SECRET: process.env.FACEBOOK_APP_SECRET,
+    INSTAGRAM_APP_SECRET: process.env.INSTAGRAM_APP_SECRET,
+  };
+  const matches = (secret: string) =>
+    !!signature &&
+    signature === "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
+
+  const trimmedSecretMatches = Object.entries(secrets)
+    .filter(([, secret]) => secret && secret !== secret.trim() && matches(secret.trim()))
+    .map(([name]) => name);
+
+  let object: string | null = null;
+  const entryIds: string[] = [];
+  const kinds = new Set<string>();
+  try {
+    const parsed = JSON.parse(payload) as {
+      object?: string;
+      entry?: Array<{ id?: string; changes?: Array<{ field?: string }>; messaging?: Array<Record<string, unknown>> }>;
+    };
+    object = parsed.object ?? null;
+    for (const entry of parsed.entry ?? []) {
+      if (entry.id) entryIds.push(entry.id);
+      for (const change of entry.changes ?? []) if (change.field) kinds.add(`changes.${change.field}`);
+      for (const messaging of entry.messaging ?? [])
+        for (const key of Object.keys(messaging))
+          if (!["sender", "recipient", "timestamp"].includes(key)) kinds.add(`messaging.${key}`);
+    }
+  } catch {
+    kinds.add("unparseable");
+  }
+
+  return {
+    hadSignatureHeader: Boolean(signature),
+    signatureFormatOk: /^sha256=[0-9a-f]{64}$/.test(signature ?? ""),
+    configuredSecrets: Object.entries(secrets).filter(([, v]) => v).map(([k]) => k),
+    trimmedSecretMatches,
+    object,
+    entryIds,
+    eventKinds: [...kinds],
+    bodyLength: payload.length,
+  };
+}
+
 export interface WebhookCommentEvent {
   instagramAccountId: string;
   commentId: string;
@@ -83,8 +135,21 @@ interface WebhookEntry {
       is_deleted?: boolean;
       is_unsupported?: boolean;
       attachments?: Array<{ type?: string }>;
+      quick_reply?: { payload?: string };
     };
   }>;
+}
+
+// Payload prefixes this app puts on buttons and quick replies. A quick reply
+// tap carrying one is a button tap, not a typed message.
+const OWN_PAYLOAD_PATTERN = /^(qr|reveal|followcheck):/;
+
+function ownQuickReplyPayload(
+  message: { quick_reply?: { payload?: string }; is_echo?: boolean } | undefined
+): string | null {
+  const payload = message?.quick_reply?.payload;
+  if (!payload || message?.is_echo) return null;
+  return OWN_PAYLOAD_PATTERN.test(payload) ? payload : null;
 }
 
 export interface WebhookMessageEvent {
@@ -174,7 +239,10 @@ export function parsePostbackEvents(
 
   for (const entry of payload.entry ?? []) {
     for (const messaging of entry.messaging ?? []) {
-      const postbackPayload = messaging.postback?.payload;
+      // Quick reply taps arrive as messages carrying the tapped option's
+      // payload; they are handled like postback button taps.
+      const quickReplyPayload = ownQuickReplyPayload(messaging.message);
+      const postbackPayload = messaging.postback?.payload ?? quickReplyPayload;
       const userId = messaging.sender?.id;
       const accountId = entry.id ?? messaging.recipient?.id;
 
@@ -186,7 +254,7 @@ export function parsePostbackEvents(
         instagramAccountId: accountId,
         userId,
         payload: postbackPayload,
-        mid: messaging.postback?.mid,
+        mid: messaging.postback ? messaging.postback.mid : messaging.message?.mid,
       });
     }
   }
@@ -218,6 +286,9 @@ export function parseMessageEvents(
       if (message.is_echo || message.is_deleted || message.is_unsupported) {
         continue;
       }
+      // A tap on one of our quick replies is routed as a postback above; its
+      // text is just the option's title, so it must not fire keyword triggers.
+      if (ownQuickReplyPayload(message)) continue;
 
       const text = message.text?.trim();
       const messageId = message.mid;

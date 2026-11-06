@@ -8,6 +8,7 @@ export interface AccountOption {
   username: string;
   instagramId: string;
   name?: string | null;
+  provider?: "META" | "ZERNIO";
 }
 
 interface AccountSelectProps {

@@ -2,6 +2,9 @@ import { prisma } from "@/lib/db/client";
 import { generateReportShareSlug } from "@/lib/reports/share";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
+import { Prisma } from "@/app/generated/prisma/client";
+import { parseDmButtonConfig } from "@/lib/dm-buttons/model";
+import { remapDmButtonSlugs } from "@/lib/campaigns/dm-buttons";
 
 // Matches the campaign name limit the create and update schemas enforce.
 const MAX_NAME_LENGTH = 100;
@@ -50,9 +53,10 @@ export async function duplicateCampaign({
 
   // Every setting on the row carries over. The links are recreated rather than
   // spread, since they are rows of their own.
-  const { trackedLinks, ...settings } = source;
+  const { trackedLinks, dmButtons, ...settings } = source;
+  const dmButtonConfig = parseDmButtonConfig(dmButtons);
 
-  return prisma.automation.create({
+  const copy = await prisma.automation.create({
     data: {
       ...settings,
       // The rest of the row identifies the original rather than describing it,
@@ -77,6 +81,22 @@ export async function duplicateCampaign({
         })),
       },
     },
-    include: { trackedLinks: true },
+    include: { trackedLinks: { orderBy: TRACKED_LINK_ORDER } },
+  });
+
+  if (!dmButtonConfig) return copy;
+
+  // Custom buttons name their tracked links by slug, and the copy's links have
+  // new slugs, so point each button at the copy's link in the same position.
+  return prisma.automation.update({
+    where: { id: copy.id },
+    data: {
+      dmButtons: remapDmButtonSlugs(
+        dmButtonConfig,
+        trackedLinks.map((link) => link.slug),
+        copy.trackedLinks.map((link) => link.slug)
+      ) as unknown as Prisma.InputJsonValue,
+    },
+    include: { trackedLinks: { orderBy: TRACKED_LINK_ORDER } },
   });
 }
