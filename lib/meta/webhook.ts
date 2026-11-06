@@ -199,10 +199,13 @@ export function parsePostbackEvents(
  * keyword-triggered autoreply: a user messages the account, and a campaign
  * with `dmTriggerEnabled` whose keywords match the text replies to them.
  *
- * Echoes (messages the account itself sent, including our own autoreplies),
- * deletions, and attachment-only messages with no text are dropped here so
- * the worker never sees them — an echo would otherwise let an autoreply
- * containing its own keyword trigger itself.
+ * Echoes (messages the account itself sent, including our own autoreplies)
+ * and deletions are dropped here so the worker never sees them — an echo
+ * would otherwise let an autoreply containing its own keyword trigger itself.
+ *
+ * Attachment-only messages (voice notes, photos, videos, story replies) are
+ * kept with an empty `messageText`: they are real replies for lead tracking,
+ * but the worker only keyword-matches messages that have text.
  */
 export function parseMessageEvents(
   payload: WebhookPayload
@@ -219,12 +222,12 @@ export function parseMessageEvents(
         continue;
       }
 
-      const text = message.text?.trim();
+      const text = message.text?.trim() ?? "";
       const messageId = message.mid;
       const senderId = messaging.sender?.id;
       const accountId = entry.id ?? messaging.recipient?.id;
 
-      if (!text || !messageId || !senderId || !accountId) continue;
+      if (!messageId || !senderId || !accountId) continue;
       // Ignore anything the connected account sent to itself.
       if (senderId === accountId) continue;
 

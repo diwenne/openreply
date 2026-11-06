@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Отчёт по кампании «{name}»",
   "{type} post": "Пост {type}",
   "”": "»",
-  "← Campaigns": "← Кампании"
+  "← Campaigns": "← Кампании",
+  "Leads": "Лиды",
+  "Lead": "Лид",
+  "Window open": "Окно открыто",
+  "Replied": "Ответили",
+  "Not replied": "Без ответа",
+  "Last reply": "Последний ответ",
+  "Messaging window": "Окно переписки",
+  "First seen": "Первый контакт",
+  "Not opened": "Не открыто",
+  "Closed": "Закрыто",
+  "{hours}h left": "осталось {hours} ч",
+  "{minutes}m left": "осталось {minutes} мин",
+  "No leads yet. People appear here once a campaign sends them a DM or they message your account.": "Лидов пока нет. Люди появятся здесь, когда кампания отправит им сообщение или они напишут на ваш аккаунт.",
+  "No reply yet": "Ответа пока нет"
 }

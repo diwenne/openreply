@@ -86,6 +86,7 @@ model Workspace {
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
   serviceKeys       ServiceKey[]
+  leads             Lead[]
 
   @@index([ownerId])
 }
@@ -160,6 +161,7 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  leads             Lead[]
 
   @@index([workspaceId])
 }
@@ -230,6 +232,7 @@ model Automation {
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
+  sourcedLeads     Lead[]
 
   @@index([workspaceId])
   @@index([instagramAccountId])
@@ -434,4 +437,39 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+// A person who has interacted with a connected Instagram account: received a
+// campaign DM, tapped a button, or messaged in. One row per (account, IGSID).
+// Timestamps drive follow-up suppression and the 24-hour messaging window.
+model Lead {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  instagramAccountId String
+  // Instagram-scoped user id of the person (the commenter / sender).
+  igsid              String
+  username           String?
+  // First campaign that reached this person, if any.
+  sourceAutomationId String?
+
+  firstSeenAt        DateTime  @default(now())
+  // Any inbound signal (DM or button tap). Opens Meta's 24-hour window.
+  lastInboundAt      DateTime?
+  // Inbound messages only (text, voice notes, media) — a real reply, not a
+  // button tap.
+  lastRepliedAt      DateTime?
+  lastOutboundAt     DateTime?
+  lastFollowUpSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  sourceAutomation Automation?      @relation(fields: [sourceAutomationId], references: [id], onDelete: SetNull)
+
+  @@unique([instagramAccountId, igsid])
+  @@index([workspaceId, lastInboundAt])
+  @@index([workspaceId, updatedAt])
+  @@index([sourceAutomationId])
 }

@@ -409,16 +409,34 @@ describe("parseMessageEvents", () => {
     ).toHaveLength(0);
   });
 
-  it("should ignore attachment-only messages with no text", () => {
+  it("should keep attachment-only messages, such as voice notes, with empty text", () => {
     const payload = messagingPayload([
       {
         sender: { id: "user_999" },
         recipient: { id: "ig_456" },
-        message: { mid: "mid_abc", attachments: [{ type: "image" }] },
+        message: { mid: "mid_voice", attachments: [{ type: "audio" }] },
+      },
+      {
+        sender: { id: "user_999" },
+        recipient: { id: "ig_456" },
+        message: { mid: "mid_photo", attachments: [{ type: "image" }] },
       },
     ]);
 
-    expect(parseMessageEvents(payload)).toHaveLength(0);
+    expect(parseMessageEvents(payload)).toEqual([
+      {
+        instagramAccountId: "ig_456",
+        messageId: "mid_voice",
+        messageText: "",
+        senderId: "user_999",
+      },
+      {
+        instagramAccountId: "ig_456",
+        messageId: "mid_photo",
+        messageText: "",
+        senderId: "user_999",
+      },
+    ]);
   });
 
   it("should ignore messages the account sent to itself", () => {

@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "Leads": "Leads",
+  "Lead": "Lead",
+  "Window open": "Janela aberta",
+  "Replied": "Respondeu",
+  "Not replied": "Sem resposta",
+  "Last reply": "Última resposta",
+  "Messaging window": "Janela de mensagens",
+  "First seen": "Primeiro contato",
+  "Not opened": "Não aberta",
+  "Closed": "Fechada",
+  "{hours}h left": "{hours} h restantes",
+  "{minutes}m left": "{minutes} min restantes",
+  "No leads yet. People appear here once a campaign sends them a DM or they message your account.": "Nenhum lead ainda. As pessoas aparecem aqui quando uma campanha envia uma DM para elas ou quando elas mandam mensagem para sua conta.",
+  "No reply yet": "Ainda sem resposta"
 }

@@ -38,6 +38,11 @@ const {
     operationalEvent: {
       create: vi.fn(),
     },
+    lead: {
+      upsert: vi.fn(),
+      updateMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
   },
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
@@ -244,6 +249,9 @@ beforeEach(() => {
     workspaceId: "workspace_123",
   });
   mockPrisma.operationalEvent.create.mockResolvedValue({});
+  mockPrisma.lead.upsert.mockReset().mockResolvedValue({});
+  mockPrisma.lead.updateMany.mockReset().mockResolvedValue({ count: 0 });
+  mockPrisma.lead.findUnique.mockReset().mockResolvedValue(null);
   mockDecryptToken.mockReturnValue("decrypted_token");
   mockMatchKeywords.mockReturnValue({ matched: true, matchedKeyword: "LINK" });
   mockReserveWorkspaceDMSend.mockResolvedValue({
@@ -1763,4 +1771,251 @@ it("retains the public reply claim if sending succeeded but its log write failed
   await process({ ...createMockJob(), id: "next-poll" });
   expect(sendCommentReply).toHaveBeenCalledTimes(1);
   expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+});
+
+describe("DM Worker — leads and follow-ups", () => {
+  const followUpAutomation = {
+    ...mockAutomation,
+    name: "Lead magnet",
+    followUpEnabled: true,
+    followUpMessage: "Thanks {username}!",
+    followUpDelayMinutes: 30,
+  };
+  const scheduledAt = Date.parse("2026-11-06T10:00:00.000Z");
+  const leadKey = {
+    instagramAccountId: "ig_account_row_1",
+    igsid: "commenter_999",
+  };
+
+  function createFollowUpJob(data: Record<string, unknown> = {}) {
+    return {
+      name: "process-followup",
+      data: {
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        automationId: "auto_789",
+        commenterName: "commenter_user",
+        scheduledAt,
+        ...data,
+      },
+      id: "followup_job_001",
+      attemptsMade: 0,
+    };
+  }
+
+  function createInboundMessageJob(timestamp: number, data: Record<string, unknown> = {}) {
+    return {
+      name: "process-message",
+      data: {
+        instagramAccountId: "ig_456",
+        messageId: "mid_lead",
+        messageText: "hey, how much is coaching?",
+        senderId: "commenter_999",
+        ...data,
+      },
+      id: "message_job_lead",
+      attemptsMade: 0,
+      timestamp,
+    } as Parameters<ReturnType<typeof getProcessor>>[0];
+  }
+
+  beforeEach(() => {
+    mockPrisma.automation.findFirst.mockResolvedValue(followUpAutomation);
+    mockPrisma.instagramAccount.findUnique.mockResolvedValue({
+      id: "ig_account_row_1",
+      workspaceId: "workspace_123",
+      instagramId: "ig_456",
+    });
+  });
+
+  it("moves an existing lead's reply timestamps forward on an inbound DM", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.lead.upsert.mockResolvedValue({
+      lastInboundAt: new Date("2026-11-05T09:00:00.000Z"),
+      lastRepliedAt: null,
+      sourceAutomationId: "auto_789",
+    });
+    const timestamp = Date.parse("2026-11-06T09:00:00.000Z");
+
+    await getProcessor()(createInboundMessageJob(timestamp));
+
+    for (const field of ["lastInboundAt", "lastRepliedAt"]) {
+      expect(mockPrisma.lead.updateMany).toHaveBeenCalledWith({
+        where: {
+          ...leadKey,
+          OR: [{ [field]: null }, { [field]: { lt: new Date(timestamp) } }],
+        },
+        data: { [field]: new Date(timestamp) },
+      });
+    }
+  });
+
+  it("counts a voice note as a reply without triggering any campaign", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...followUpAutomation, dmTriggerEnabled: true, matchAnyWord: true },
+    ]);
+    const timestamp = Date.parse("2026-11-06T09:30:00.000Z");
+
+    await getProcessor()(
+      createInboundMessageJob(timestamp, { messageId: "mid_voice", messageText: "" })
+    );
+
+    expect(mockPrisma.lead.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          lastInboundAt: new Date(timestamp),
+          lastRepliedAt: new Date(timestamp),
+        }),
+      })
+    );
+    expect(mockPrisma.automation.findMany).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("never moves timestamps backwards when an older job finishes late", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.lead.upsert.mockResolvedValue({
+      lastInboundAt: new Date("2026-11-06T12:00:00.000Z"),
+      lastRepliedAt: new Date("2026-11-06T12:00:00.000Z"),
+      sourceAutomationId: null,
+    });
+
+    await getProcessor()(
+      createInboundMessageJob(Date.parse("2026-11-06T09:00:00.000Z"))
+    );
+
+    expect(mockPrisma.lead.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: {} })
+    );
+    expect(mockPrisma.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("records the lead and its source campaign when a comment DM is sent", async () => {
+    await getProcessor()(createMockJob());
+
+    expect(mockSendPrivateReply).toHaveBeenCalled();
+    expect(mockPrisma.lead.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          workspaceId: "workspace_123",
+          ...leadKey,
+          username: "commenter_user",
+          sourceAutomationId: "auto_789",
+          lastOutboundAt: expect.any(Date),
+        }),
+        update: { username: "commenter_user" },
+      })
+    );
+  });
+
+  it("still delivers the DM when lead bookkeeping fails", async () => {
+    mockPrisma.lead.upsert.mockRejectedValue(new Error("lead table missing"));
+
+    await expect(getProcessor()(createMockJob())).resolves.toBeUndefined();
+    expect(mockSendPrivateReply).toHaveBeenCalled();
+  });
+
+  it("skips the follow-up when the lead replied after it was scheduled", async () => {
+    mockPrisma.lead.findUnique.mockResolvedValue({
+      lastRepliedAt: new Date(scheduledAt + 60_000),
+    });
+
+    await getProcessor()(createFollowUpJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends the follow-up when the last reply predates scheduling", async () => {
+    mockPrisma.lead.findUnique.mockResolvedValue({
+      lastRepliedAt: new Date(scheduledAt - 60_000),
+    });
+
+    await getProcessor()(createFollowUpJob());
+
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Thanks commenter_user!"
+    );
+    expect(mockPrisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { lastFollowUpSentAt: expect.any(Date) },
+      })
+    );
+  });
+
+  it("sends follow-ups queued before scheduledAt existed", async () => {
+    mockPrisma.lead.findUnique.mockResolvedValue({
+      lastRepliedAt: new Date(),
+    });
+
+    await getProcessor()(createFollowUpJob({ scheduledAt: undefined }));
+
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+    expect(mockPrisma.lead.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("records an operational warning when the follow-up fails", async () => {
+    mockSendDirectMessage.mockRejectedValue(new Error("outside window"));
+
+    await getProcessor()(createFollowUpJob());
+
+    expect(mockPrisma.operationalEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace_123",
+        source: "WORKER",
+        level: "WARNING",
+        message: 'Follow-up for campaign "Lead magnet" was not delivered',
+      }),
+    });
+    expect(mockPrisma.lead.upsert).not.toHaveBeenCalled();
+  });
+
+  it("records an operational warning when the access token can't be loaded", async () => {
+    mockDecryptToken.mockImplementation(() => {
+      throw new Error("bad token");
+    });
+
+    await getProcessor()(createFollowUpJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockPrisma.operationalEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ level: "WARNING" }),
+    });
+  });
+
+  it("never schedules a DM-trigger follow-up before the triggering message", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...followUpAutomation, dmTriggerEnabled: true, requireFollow: false },
+    ]);
+    // The webhook host's clock runs an hour ahead of the worker's.
+    const triggerTimestamp = Date.now() + 60 * 60_000;
+
+    await getProcessor()(
+      createInboundMessageJob(triggerTimestamp, {
+        messageId: "mid_sched",
+        messageText: "LINK please",
+      })
+    );
+
+    const followUpCall = mockQueueAdd.mock.calls.find(
+      ([name]) => name === "process-followup"
+    );
+    expect(followUpCall?.[1].scheduledAt).toBeGreaterThanOrEqual(triggerTimestamp);
+    expect(followUpCall?.[2]).toEqual(
+      expect.objectContaining({ delay: 30 * 60_000 })
+    );
+    // The trigger itself was recorded as the reply, and must not count as one
+    // "after" the follow-up was scheduled.
+    mockPrisma.lead.findUnique.mockResolvedValue({
+      lastRepliedAt: new Date(triggerTimestamp),
+    });
+    mockSendDirectMessage.mockClear();
+    await getProcessor()(
+      createFollowUpJob({ scheduledAt: followUpCall?.[1].scheduledAt })
+    );
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+  });
 });
