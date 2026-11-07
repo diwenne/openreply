@@ -53,6 +53,11 @@ import {
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { hashRecipientId } from "@/lib/tracking/server";
+import {
+  hasLeadRepliedSince,
+  recordLeadInbound,
+  recordLeadOutbound,
+} from "@/lib/leads/record";
 
 import { ZernioApiError } from "@/lib/zernio/client";
 
@@ -779,6 +784,13 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           errorMessage: null,
         },
       });
+      await recordLeadOutbound({
+        workspaceId: automation.workspaceId,
+        instagramAccountId: automation.instagramAccountId,
+        igsid: commenterId,
+        username: commenterName,
+        automationId: automation.id,
+      });
     } catch (error) {
       const sendError = classifySendError(error);
       // Retain reservations if the provider may have delivered the message.
@@ -916,6 +928,18 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     !hasInstagramCredentials(automation.instagramAccount)
   ) {
     return;
+  }
+
+  // A real tap is inbound activity; the read-receipt fallback and follow
+  // re-checks are jobs we scheduled ourselves.
+  if (!fallback && !job.data.followRecheck) {
+    await recordLeadInbound({
+      workspaceId: automation.workspaceId,
+      instagramAccountId: automation.instagramAccountId,
+      igsid: userId,
+      kind: "postback",
+      at: job.timestamp ? new Date(job.timestamp) : undefined,
+    });
   }
 
   // Duplicate sends are enabled: every button tap re-sends the reveal
@@ -1140,6 +1164,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           userId,
           automationId: automation.id,
           commenterName,
+          scheduledAt: Date.now(),
         },
         {
           delay: delayMs,
@@ -1166,6 +1191,13 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         dmSentAt: new Date(),
       },
       update: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
+    });
+    await recordLeadOutbound({
+      workspaceId: automation.workspaceId,
+      instagramAccountId: automation.instagramAccountId,
+      igsid: userId,
+      username: commenterName,
+      automationId: automation.id,
     });
   } catch (originalError) {
     const error = classifySendError(originalError);
@@ -1224,7 +1256,8 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
  * window closed because the delay was long), it is logged, not retried forever.
  */
 async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
-  const { instagramAccountId, userId, automationId, commenterName } = job.data;
+  const { instagramAccountId, userId, automationId, commenterName, scheduledAt } =
+    job.data;
 
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true, ...connectionScope(job.data) },
@@ -1241,17 +1274,30 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
     return;
   }
 
-  let accessToken: InstagramContext;
-  try {
-    accessToken = await createInstagramContext(
-      automation.instagramAccount,
-      `${job.id}:${automation.id}`
+  // The person already wrote back after this follow-up was scheduled: a
+  // canned message would now interrupt a live conversation. Jobs queued
+  // before scheduledAt existed carry no timestamp and send as before.
+  if (
+    scheduledAt &&
+    (await hasLeadRepliedSince(
+      automation.instagramAccountId,
+      userId,
+      new Date(scheduledAt)
+    ))
+  ) {
+    console.log(
+      `[DM Worker] Skipped follow-up for campaign ${automation.id}: the lead replied after it was scheduled`
     );
-  } catch {
     return;
   }
 
+  // Token setup and the send share one handler: either failing means the
+  // follow-up was not delivered, which should surface on the diagnostics page.
   try {
+    const accessToken = await createInstagramContext(
+      automation.instagramAccount,
+      `${job.id}:${automation.id}`
+    );
     await sendDirectMessage({
       context: accessToken,
       instagramAccountId: automation.instagramAccount.instagramId,
@@ -1266,7 +1312,27 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
       "[DM Worker] Failed to send follow-up message:",
       formatError(error)
     );
+    await prisma.operationalEvent
+      .create({
+        data: {
+          workspaceId: automation.workspaceId,
+          source: "WORKER",
+          level: "WARNING",
+          message: `Follow-up for campaign "${automation.name}" was not delivered`,
+          payload: { automationId: automation.id, error: formatError(error) },
+        },
+      })
+      .catch(() => {});
+    return;
   }
+
+  await recordLeadOutbound({
+    workspaceId: automation.workspaceId,
+    instagramAccountId: automation.instagramAccountId,
+    igsid: userId,
+    username: commenterName,
+    followUp: true,
+  });
 }
 
 /**
@@ -1279,6 +1345,29 @@ async function processFollowUp(job: Job<ProcessFollowUpJob>): Promise<void> {
  */
 async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
   const { instagramAccountId, messageId, messageText, senderId } = job.data;
+
+  // Every inbound DM is lead activity, whether or not a campaign matches it.
+  const account = await prisma.instagramAccount
+    .findUnique({
+      where: job.data.accountConnectionId
+        ? { id: job.data.accountConnectionId }
+        : { instagramId: instagramAccountId },
+      select: { id: true, workspaceId: true, instagramId: true },
+    })
+    .catch(() => null);
+  if (account && account.instagramId === instagramAccountId) {
+    await recordLeadInbound({
+      workspaceId: account.workspaceId,
+      instagramAccountId: account.id,
+      igsid: senderId,
+      kind: "message",
+      at: job.timestamp ? new Date(job.timestamp) : undefined,
+    });
+  }
+
+  // Voice notes, photos and other attachment-only messages count as replies
+  // above, but campaigns trigger on text only — including "any word" ones.
+  if (!messageText.trim()) return;
 
   const automations = await prisma.automation.findMany({
     where: {
@@ -1474,6 +1563,11 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
               userId: senderId,
               automationId: automation.id,
               commenterName,
+              // The triggering DM was recorded at job.timestamp, stamped by
+              // the webhook host's clock. Never schedule before it, or a
+              // clock skew between hosts would let the trigger cancel its own
+              // follow-up (the reply check is strictly "after").
+              scheduledAt: Math.max(Date.now(), job.timestamp ?? 0),
             },
             {
               delay: Math.max(0, automation.followUpDelayMinutes ?? 0) * 60_000,
@@ -1501,6 +1595,13 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
           dmSentAt: new Date(),
           errorMessage: null,
         },
+      });
+      await recordLeadOutbound({
+        workspaceId: automation.workspaceId,
+        instagramAccountId: automation.instagramAccountId,
+        igsid: senderId,
+        username: commenterName,
+        automationId: automation.id,
       });
     } catch (error) {
       await releaseWorkspaceDMReservation(

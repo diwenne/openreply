@@ -468,5 +468,19 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "Leads": "潛在客戶",
+  "Lead": "潛在客戶",
+  "Window open": "訊息時段開放中",
+  "Replied": "已回覆",
+  "Not replied": "未回覆",
+  "Last reply": "最後回覆",
+  "Messaging window": "訊息時段",
+  "First seen": "首次互動",
+  "Not opened": "未開啟",
+  "Closed": "已關閉",
+  "{hours}h left": "剩 {hours} 小時",
+  "{minutes}m left": "剩 {minutes} 分鐘",
+  "No leads yet. People appear here once a campaign sends them a DM or they message your account.": "尚無潛在客戶。當活動傳送私訊給對方，或對方傳訊息給你的帳號後，就會顯示在這裡。",
+  "No reply yet": "尚未回覆"
 }

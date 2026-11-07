@@ -65,6 +65,8 @@ export interface ProcessFollowUpJob {
   userId: string;
   automationId: string;
   commenterName?: string | null;
+  /** Epoch ms when the follow-up was queued; replies after it cancel the send. */
+  scheduledAt?: number;
 }
 
 // An inbound DM from a user. Campaigns with `dmTriggerEnabled` whose keywords
