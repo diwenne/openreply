@@ -4,6 +4,7 @@ import LanguageSwitcher from "@/components/language-switcher";
 import { useI18n } from "@/lib/i18n/provider";
 import { Suspense, useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
+import { ReplyDelaySettings } from "@/components/reply-delay-settings";
 import { ZernioConnection } from "@/components/zernio-connection";
 import { InstagramConnectNotice } from "@/components/instagram-connect-notice";
 
@@ -24,6 +25,10 @@ interface SettingsData {
       provider?: "META" | "ZERNIO";
       tokenExpiresAt: string | null;
       webhookSubscribed: boolean;
+      publicReplyDelayMinSeconds: number;
+      publicReplyDelayMaxSeconds: number;
+      dmDelayMinSeconds: number;
+      dmDelayMaxSeconds: number;
     }
   >;
 }
@@ -192,29 +197,32 @@ export default function SettingsPage() {
             {accounts.map((account) => (
               <div
                 key={account.id}
-                className="flex flex-col gap-3 rounded border border-border bg-surface/70 p-4 sm:flex-row sm:items-center sm:justify-between"
+                className="rounded border border-border bg-surface/70 p-4"
               >
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    @{account.username}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    {account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}
-                    {account.tokenExpiresAt
-                      ? new Date(account.tokenExpiresAt).toLocaleDateString(locale)
-                      : t("not available")}</>}{" "}
-                    · {account.webhookSubscribed ? t("Webhook ready") : t("Webhook pending")}
-                  </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      @{account.username}
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      {account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}
+                      {account.tokenExpiresAt
+                        ? new Date(account.tokenExpiresAt).toLocaleDateString(locale)
+                        : t("not available")}</>}{" "}
+                      · {account.webhookSubscribed ? t("Webhook ready") : t("Webhook pending")}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => disconnectInstagram(account.id)}
+                    disabled={busy === `disconnect:${account.id}`}
+                    className="inline-flex items-center justify-center rounded border border-error/20 px-4 py-2 text-sm font-medium text-error transition-all hover:border-error/40 hover:bg-error/10 disabled:opacity-50"
+                  >
+                    {busy === `disconnect:${account.id}`
+                      ? t("Disconnecting...")
+                      : t("Disconnect")}
+                  </button>
                 </div>
-                <button
-                  onClick={() => disconnectInstagram(account.id)}
-                  disabled={busy === `disconnect:${account.id}`}
-                  className="inline-flex items-center justify-center rounded border border-error/20 px-4 py-2 text-sm font-medium text-error transition-all hover:border-error/40 hover:bg-error/10 disabled:opacity-50"
-                >
-                  {busy === `disconnect:${account.id}`
-                    ? t("Disconnecting...")
-                    : t("Disconnect")}
-                </button>
+                <ReplyDelaySettings account={account} />
               </div>
             ))}
           </div>

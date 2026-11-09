@@ -9,6 +9,7 @@ const {
   mockSendDirectMessageWithButton,
   mockSendDirectMessage,
   mockSendDirectMessageWithLinkButton,
+  mockSendCommentReply,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -46,6 +47,7 @@ const {
   mockSendDirectMessageWithButton: vi.fn(),
   mockSendDirectMessage: vi.fn(),
   mockSendDirectMessageWithLinkButton: vi.fn(),
+  mockSendCommentReply: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -67,7 +69,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendDirectMessageWithButton: mockSendDirectMessageWithButton,
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
-  sendCommentReply: vi.fn(),
+  sendCommentReply: mockSendCommentReply,
   MetaApiError: class MetaApiError extends Error {
     code: number;
     constructor(
@@ -288,6 +290,7 @@ beforeEach(() => {
     recipient_id: "commenter_999",
     message_id: "msg_006",
   });
+  mockSendCommentReply.mockResolvedValue({ id: "reply_001" });
   mockGetUserFollowStatus.mockResolvedValue(true);
 });
 
@@ -318,6 +321,46 @@ describe("DM Worker — comments left on an ad", () => {
       })
     );
     expect(mockSendPrivateReply).toHaveBeenCalled();
+  });
+});
+
+describe("DM Worker — reply pacing legs", () => {
+  const pacedAutomation = {
+    ...mockAutomation,
+    publicReplyEnabled: true,
+    publicReplyMessages: ["Thanks for the comment!"],
+  };
+
+  it("posts only the public reply for the reply leg", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([pacedAutomation]);
+    const processor = getProcessor();
+
+    await processor(createMockJob({ ...mockJobData, leg: "reply" }));
+
+    expect(mockSendCommentReply).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+
+  it("sends only the DM for the dm leg", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([pacedAutomation]);
+    const processor = getProcessor();
+
+    await processor(createMockJob({ ...mockJobData, leg: "dm" }));
+
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
+  });
+
+  it("runs both legs when the job carries no leg", async () => {
+    // The polling reconciler and any job queued before pacing existed omit the
+    // leg, so they must keep the old single-job behaviour.
+    mockPrisma.automation.findMany.mockResolvedValue([pacedAutomation]);
+    const processor = getProcessor();
+
+    await processor(createMockJob());
+
+    expect(mockSendCommentReply).toHaveBeenCalledTimes(1);
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
   });
 });
 

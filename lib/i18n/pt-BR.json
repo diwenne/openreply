@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "Before posting the visible reply under the comment.": "Antes de publicar a resposta visível abaixo do comentário.",
+  "Before sending the private reply or answering an inbound DM.": "Antes de enviar a resposta privada ou responder a uma DM recebida.",
+  "Could not save reply timing": "Não foi possível salvar o tempo das respostas",
+  "DM": "DM",
+  "Each reply waits a random number of seconds drawn from its range, so replies do not arrive on a fixed interval. 0 and 0 sends immediately.": "Cada resposta espera um número aleatório de segundos dentro do intervalo, para que as respostas não cheguem em um intervalo fixo. 0 e 0 envia imediatamente.",
+  "Max": "Máx.",
+  "Min": "Mín.",
+  "Public comment reply": "Resposta pública ao comentário",
+  "Random wait per comment": "Espera aleatória por comentário",
+  "Reply timing": "Tempo das respostas",
+  "Save timing": "Salvar tempo",
+  "Saving...": "Salvando...",
+  "sec": "s",
+  "Timing saved": "Tempo salvo"
 }

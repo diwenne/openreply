@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Отчёт по кампании «{name}»",
   "{type} post": "Пост {type}",
   "”": "»",
-  "← Campaigns": "← Кампании"
+  "← Campaigns": "← Кампании",
+  "Before posting the visible reply under the comment.": "Перед публикацией видимого ответа под комментарием.",
+  "Before sending the private reply or answering an inbound DM.": "Перед отправкой личного ответа или ответом на входящее сообщение.",
+  "Could not save reply timing": "Не удалось сохранить время ответа",
+  "DM": "Личное сообщение",
+  "Each reply waits a random number of seconds drawn from its range, so replies do not arrive on a fixed interval. 0 and 0 sends immediately.": "Каждый ответ ждёт случайное число секунд из диапазона, чтобы ответы не приходили через одинаковые интервалы. 0 и 0 — отправлять сразу.",
+  "Max": "Макс.",
+  "Min": "Мин.",
+  "Public comment reply": "Публичный ответ на комментарий",
+  "Random wait per comment": "Случайная задержка для каждого комментария",
+  "Reply timing": "Время ответа",
+  "Save timing": "Сохранить время",
+  "Saving...": "Сохранение...",
+  "sec": "с",
+  "Timing saved": "Время сохранено"
 }

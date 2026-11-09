@@ -37,7 +37,14 @@ export interface ProcessCommentJob {
   // Which path enqueued this comment. It is not copied to ProcessedComment or
   // used for reconciliation dedup.
   source?: CommentSource;
+  // Set when pacing is configured: the webhook splits one comment into two
+  // jobs, one per leg, each with its own delay. Omitted by the polling
+  // reconciler and by any job queued before pacing existed, which then runs
+  // both legs exactly as before.
+  leg?: CommentLeg;
 }
+
+export type CommentLeg = "reply" | "dm";
 
 // Delivered when a user taps an opening DM's button — carries the reveal target.
 export interface ProcessPostbackJob {
