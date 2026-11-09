@@ -152,6 +152,13 @@ model InstagramAccount {
   accessToken       String
   tokenExpiresAt    DateTime?
   webhookSubscribed Boolean  @default(false)
+  // Reply pacing, in seconds. Each leg waits a random amount drawn from its
+  // range before it runs, so the account never answers on a fixed interval.
+  // 0/0 sends immediately, which is the previous behaviour.
+  publicReplyDelayMinSeconds Int @default(0)
+  publicReplyDelayMaxSeconds Int @default(0)
+  dmDelayMinSeconds          Int @default(0)
+  dmDelayMaxSeconds          Int @default(0)
   connectedAt       DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

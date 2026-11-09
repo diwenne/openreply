@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
+import { randomDelayMs } from '@/lib/queue/reply-delay';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
@@ -12,7 +13,15 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
   if (incoming.object !== 'instagram' || !Array.isArray(incoming.entry)) return;
   const accounts = await prisma.instagramAccount.findMany({
     where: { instagramId: { in: incoming.entry.map(e => e.id) }, provider, ...(workspaceId ? { workspaceId } : {}) },
-    select: { id: true, instagramId: true, workspaceId: true },
+    select: {
+      id: true,
+      instagramId: true,
+      workspaceId: true,
+      publicReplyDelayMinSeconds: true,
+      publicReplyDelayMaxSeconds: true,
+      dmDelayMinSeconds: true,
+      dmDelayMaxSeconds: true,
+    },
   });
   const accountMap = new Map(accounts.map(a => [a.instagramId, a]));
   const allowed = new Set(accountMap.keys());
@@ -40,23 +49,45 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
-      await queue.add(
-        "process-comment",
-        {
-          instagramAccountId: event.instagramAccountId,
-          accountConnectionId: accountMap.get(event.instagramAccountId)?.id,
-          commentId: event.commentId,
-          commentText: event.commentText,
-          commenterId: event.commenterId,
-          commenterName: event.commenterName,
-          mediaId: event.mediaId,
-          originalMediaId: event.originalMediaId,
-          source: "WEBHOOK",
-        },
-        {
-          jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
-        }
-      );
+      const jobId = `comment_${event.instagramAccountId}_${event.commentId}`;
+      const jobData = {
+        instagramAccountId: event.instagramAccountId,
+        accountConnectionId: account.id,
+        commentId: event.commentId,
+        commentText: event.commentText,
+        commenterId: event.commenterId,
+        commenterName: event.commenterName,
+        mediaId: event.mediaId,
+        originalMediaId: event.originalMediaId,
+        source: "WEBHOOK" as const,
+      };
+      const publicReplyDelayMs = randomDelayMs({
+        minSeconds: account.publicReplyDelayMinSeconds,
+        maxSeconds: account.publicReplyDelayMaxSeconds,
+      });
+      const dmDelayMs = randomDelayMs({
+        minSeconds: account.dmDelayMinSeconds,
+        maxSeconds: account.dmDelayMaxSeconds,
+      });
+
+      if (publicReplyDelayMs === 0 && dmDelayMs === 0) {
+        await queue.add("process-comment", jobData, { jobId });
+      } else {
+        // One job per leg so the public reply and the DM can wait different
+        // amounts. The leg suffix is load-bearing: the base id is
+        // deterministic, and without it BullMQ would treat the second add as a
+        // duplicate and silently drop one of the legs.
+        await queue.add(
+          "process-comment",
+          { ...jobData, leg: "reply" },
+          { jobId: `${jobId}_reply`, delay: publicReplyDelayMs }
+        );
+        await queue.add(
+          "process-comment",
+          { ...jobData, leg: "dm" },
+          { jobId: `${jobId}_dm`, delay: dmDelayMs }
+        );
+      }
 
       if (account) {
         await prisma.webhookEvent.update({
@@ -100,6 +131,13 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
+      // An inbound DM (including a Story reply) is answered with the same
+      // per-account pacing as the DM leg of a comment.
+      const dmDelayMs = randomDelayMs({
+        minSeconds: account.dmDelayMinSeconds,
+        maxSeconds: account.dmDelayMaxSeconds,
+      });
+
       await queue.add(
         MESSAGE_JOB_NAME,
         {
@@ -117,6 +155,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           jobId: `message_${event.instagramAccountId}_${Buffer.from(
             event.messageId
           ).toString("base64url")}`,
+          ...(dmDelayMs > 0 ? { delay: dmDelayMs } : {}),
         }
       );
 
