@@ -34,6 +34,8 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 
 - Keyword to DM. Match one or many keywords per post, whole-word or partial.
 - Optional public reply. Post a visible comment reply on top of the DM.
+
+- Natural reply timing. Give the public reply and the DM each a per-account range in seconds, and OpenReply waits a random amount drawn from that range before it acts. A fixed delay still reads as a bot; a varied one does not.
 - DM and Story reply triggers. The same keywords can also fire on an inbound DM, which covers text replies to your Stories, since Instagram delivers those as DMs. That makes `Reply LINK to this Story` work with no post involved. Turn it on per campaign, and subscribe to the `messages` webhook field if you use your own Meta app. Zernio webhook registration is automatic.
 - Tracked links. Swap a link for a tracked redirect and see clicks and CTR per campaign.
 - Two link buttons. Send up to two tappable link buttons in one DM, each a separate tracked link with its own click stats.
