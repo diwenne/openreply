@@ -468,5 +468,19 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "Before posting the visible reply under the comment.": "在留言下方張貼公開回覆之前。",
+  "Before sending the private reply or answering an inbound DM.": "在傳送私訊回覆或回覆收到的私訊之前。",
+  "Could not save reply timing": "無法儲存回覆時機",
+  "DM": "私訊",
+  "Each reply waits a random number of seconds drawn from its range, so replies do not arrive on a fixed interval. 0 and 0 sends immediately.": "每次回覆會從設定的範圍中隨機等待數秒，讓回覆不會固定在同一間隔送出。最小值與最大值都設為 0 時會立即送出。",
+  "Max": "最大值",
+  "Min": "最小值",
+  "Public comment reply": "公開留言回覆",
+  "Random wait per comment": "每則留言隨機等待",
+  "Reply timing": "回覆時機",
+  "Save timing": "儲存時機",
+  "Saving...": "儲存中...",
+  "sec": "秒",
+  "Timing saved": "時機已儲存"
 }
