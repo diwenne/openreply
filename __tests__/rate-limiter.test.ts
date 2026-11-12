@@ -34,7 +34,12 @@ import {
   incrementDMCounter,
   reserveDMSlot,
   releaseDMSlot,
+  pauseDMSends,
   RATE_LIMIT_MAX,
+  REQUEUE_DELAY_MS,
+  META_PAUSE_MS,
+  META_PAUSE_JITTER_MS,
+  MAX_HELD_REQUEUE_ATTEMPTS,
 } from "../lib/utils/rate-limiter";
 
 beforeEach(() => {
@@ -94,8 +99,9 @@ describe("reserveDMSlot", () => {
 
     expect(mockEval).toHaveBeenCalledWith(
       expect.any(String),
-      1,
+      2,
       "rate:dm:account_123",
+      "rate:dm:pause:account_123",
       RATE_LIMIT_MAX,
       3600
     );
@@ -114,6 +120,28 @@ describe("reserveDMSlot", () => {
     expect(result.reserved).toBe(false);
     expect(result.shouldRequeue).toBe(true);
     expect(result.shouldSkip).toBe(false);
+    expect(result.requeueDelayMs).toBe(REQUEUE_DELAY_MS);
+  });
+
+  it("should hold sends while the account is paused, until the pause ends", async () => {
+    mockEval.mockResolvedValue([0, 12, 0, 240_000]);
+
+    const result = await reserveDMSlot("account_123", 0);
+
+    expect(result.allowed).toBe(false);
+    expect(result.reserved).toBe(false);
+    expect(result.shouldRequeue).toBe(true);
+    expect(result.requeueDelayMs).toBeGreaterThanOrEqual(240_000);
+    expect(result.requeueDelayMs).toBeLessThan(240_000 + META_PAUSE_JITTER_MS);
+  });
+
+  it("keeps holding through a long pause, not only three times", async () => {
+    mockEval.mockResolvedValue([0, 12, 0, 240_000]);
+
+    expect((await reserveDMSlot("account_123", 3)).shouldRequeue).toBe(true);
+    expect(
+      (await reserveDMSlot("account_123", MAX_HELD_REQUEUE_ATTEMPTS)).shouldSkip
+    ).toBe(true);
   });
 
   it("should skip after max requeue attempts", async () => {
@@ -155,5 +183,20 @@ describe("releaseDMSlot", () => {
 
     expect(count).toBe(0);
     expect(mockDel).toHaveBeenCalledWith("rate:dm:account_123");
+  });
+});
+
+describe("pauseDMSends", () => {
+  it("pauses the account, never shortening a pause already running", async () => {
+    mockEval.mockResolvedValue(1);
+
+    await pauseDMSends("account_123");
+
+    expect(mockEval).toHaveBeenCalledWith(
+      expect.stringContaining("PTTL"),
+      1,
+      "rate:dm:pause:account_123",
+      META_PAUSE_MS
+    );
   });
 });

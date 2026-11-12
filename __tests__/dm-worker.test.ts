@@ -13,6 +13,7 @@ const {
   mockMatchKeywords,
   mockReserveDMSlot,
   mockReleaseDMSlot,
+  mockPauseDMSends,
   mockQueueAdd,
   mockReserveWorkspaceDMSend,
   mockReleaseWorkspaceDMReservation,
@@ -50,6 +51,7 @@ const {
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
   mockReleaseDMSlot: vi.fn(),
+  mockPauseDMSends: vi.fn(),
   mockQueueAdd: vi.fn(),
   mockReserveWorkspaceDMSend: vi.fn(),
   mockReleaseWorkspaceDMReservation: vi.fn(),
@@ -100,6 +102,7 @@ vi.mock("@/lib/utils/keyword-matcher", () => ({
 vi.mock("@/lib/utils/rate-limiter", () => ({
   reserveDMSlot: mockReserveDMSlot,
   releaseDMSlot: mockReleaseDMSlot,
+  pauseDMSends: mockPauseDMSends,
 }));
 
 vi.mock("@/lib/billing/usage", () => ({
@@ -263,6 +266,7 @@ beforeEach(() => {
     reserved: true,
   });
   mockReleaseDMSlot.mockResolvedValue(0);
+  mockPauseDMSends.mockResolvedValue(undefined);
   mockReleaseWorkspaceDMReservation.mockResolvedValue({ count: 1 });
   mockSendPrivateReply.mockResolvedValue({
     recipient_id: "commenter_999",
@@ -960,6 +964,56 @@ describe("DM Worker — one private reply per comment", () => {
           errorMessage: expect.stringContaining("The comment is invalid for a private reply"),
         }),
       })
+    );
+  });
+
+  it("should pause the account's sends when Meta rate limits a send", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
+    mockSendPrivateReply.mockRejectedValue(
+      new RateLimitError("The rate limit has exceeded. Please retry again after some time")
+    );
+
+    const processor = getProcessor();
+    await expect(processor(createMockJob())).rejects.toThrow("The rate limit has exceeded");
+
+    expect(mockPauseDMSends).toHaveBeenCalledWith("ig_456");
+    // A rate limit is not a verdict on the comment: it keeps its budget.
+    for (const [args] of mockPrisma.dmLog.update.mock.calls) {
+      expect(args.data).not.toHaveProperty("attempts");
+    }
+  });
+
+  it("should not pause the account for other send failures", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
+    mockSendPrivateReply.mockRejectedValue(
+      new MetaApiError(100, undefined, undefined, "The comment is invalid for a private reply")
+    );
+
+    const processor = getProcessor();
+    await expect(processor(createMockJob())).rejects.toThrow();
+    expect(mockPauseDMSends).not.toHaveBeenCalled();
+  });
+
+  it("should requeue for when the pause ends instead of sending", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
+    mockReserveDMSlot.mockResolvedValue({
+      allowed: false,
+      currentCount: 11,
+      remainingDMs: 0,
+      shouldRequeue: true,
+      requeueDelayMs: 600_000,
+      shouldSkip: false,
+      reserved: false,
+    });
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      "process-comment",
+      expect.objectContaining({ requeueAttempt: 1 }),
+      expect.objectContaining({ delay: 600_000 })
     );
   });
 
