@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MetaApiError,
   PermissionError,
   RateLimitError,
   TokenExpiredError,
+  sendPrivateReply,
 } from "../lib/meta/client";
 
 /**
@@ -35,5 +36,35 @@ describe("Meta API error classes", () => {
 
   it("stays a MetaApiError, which is how callers narrow it", () => {
     expect(new PermissionError("m", "t", 2534025)).toBeInstanceOf(MetaApiError);
+  });
+});
+
+describe("Meta error classification", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Production body from a throttled account during a busy post.
+  it("treats a 613 from /messages as a rate limit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        url: "https://graph.instagram.com/v25.0/ig_1/messages",
+        json: async () => ({
+          error: {
+            message: "The rate limit has exceeded. Please retry again after some time",
+            type: "IGApiException",
+            code: 613,
+            error_subcode: 2534040,
+          },
+        }),
+      })
+    );
+
+    const sent = sendPrivateReply("token", "ig_1", "comment_1", "hi");
+    await expect(sent).rejects.toBeInstanceOf(RateLimitError);
+    await expect(sent).rejects.toMatchObject({ code: 613, subcode: 2534040 });
   });
 });

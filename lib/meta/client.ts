@@ -148,6 +148,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
       case 368:
       case 4:
       case 17:
+      // 613 is what /messages returns when an account sends faster than Meta
+      // allows ("The rate limit has exceeded", sub=2534040), and 80002 is the
+      // Instagram business-use-case throttle. Left unclassified they read as
+      // an ambiguous outcome, so the worker neither backs off nor retries.
+      case 613:
+      case 80002:
         throw new RateLimitError(message, traceId, subcode, code);
       case 10:
       case 100:

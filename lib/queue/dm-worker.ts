@@ -40,7 +40,7 @@ import {
   type InstagramContext,
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
-import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
+import { pauseDMSends, reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
   reserveWorkspaceDMSend,
@@ -588,7 +588,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           data: {
             status: "SKIPPED_RATE_LIMIT",
             matchedKeyword: matchResult.matchedKeyword,
-            errorMessage: "Hourly Instagram DM rate limit reached",
+            errorMessage:
+              "Instagram DM rate limit reached (hourly cap, or Meta throttling the account)",
           },
         });
         continue;
@@ -605,7 +606,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           data: {
             status: "PENDING",
             matchedKeyword: matchResult.matchedKeyword,
-            errorMessage: "Hourly rate limit hit; retry scheduled",
+            errorMessage:
+              "Rate limited (hourly cap, or Meta throttling the account); retry scheduled",
           },
         });
 
@@ -785,6 +787,17 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       if (isConfirmedSendRejection(sendError)) {
         if (rateLimit?.reserved) await releaseDMSlot(instagramAccountId);
         await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+      }
+      // Meta is throttling the account: stop every queued comment for it from
+      // sending until the pause ends, instead of each one failing in turn and
+      // keeping the account throttled.
+      if (sendError instanceof RateLimitError) {
+        await pauseDMSends(instagramAccountId).catch((pauseError) =>
+          console.error(
+            "[DM Worker] Failed to pause sends after a rate limit:",
+            formatError(pauseError)
+          )
+        );
       }
       await prisma.dmLog.update({
         where: { automationId_commentId: { automationId: automation.id, commentId } },
