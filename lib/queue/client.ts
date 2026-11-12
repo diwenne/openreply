@@ -34,6 +34,9 @@ export interface ProcessCommentJob {
   // from. Campaigns are bound to that post, so both ids have to be matched.
   originalMediaId?: string;
   requeueAttempt?: number;
+  // Set when pacing (COMMENT_DM_MAX_PER_HOUR) held the comment: the send slot
+  // it was scheduled for, in ms since epoch. Arriving at it sends right away.
+  slotAt?: number;
   // Which path enqueued this comment. It is not copied to ProcessedComment or
   // used for reconciliation dedup.
   source?: CommentSource;
