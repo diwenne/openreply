@@ -49,10 +49,27 @@ export interface ProcessReminderJob {
   instagramAccountId: string;
 }
 
-export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob | ProcessReminderJob;
+// An incoming DM or story reply that may trigger a Welcome DM.
+export interface ProcessMessageJob {
+  // IG professional user_id (IG) or Page id (FB) — matches InstagramAccount.instagramId.
+  instagramAccountId: string;
+  senderId: string;
+  text: string;
+  mid: string;
+  isStoryReply: boolean;
+  // Epoch ms the user's message was sent — for the 24h window guard.
+  messageTimestamp: number;
+}
+
+export type DmQueueJob =
+  | ProcessCommentJob
+  | ProcessPostbackJob
+  | ProcessReminderJob
+  | ProcessMessageJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const REMINDER_JOB_NAME = "process-reminder";
+export const MESSAGE_JOB_NAME = "process-message";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

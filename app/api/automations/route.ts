@@ -48,10 +48,20 @@ const createAutomationSchema = z
     reminderMessage: z.string().max(1000).optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
+    triggerType: z
+      .enum(["COMMENT", "STORY_REPLY", "DM_KEYWORD"])
+      .optional()
+      .default("COMMENT"),
+    welcomeCooldownDays: z.number().int().min(1).max(365).optional().nullable(),
   })
-  // A campaign must target a specific post, any post, or the next reel.
+  // A COMMENT campaign must target a specific post, any post, or the next reel.
+  // Story-reply / DM campaigns aren't tied to a post, so the target is N/A.
   .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    (d) =>
+      d.triggerType !== "COMMENT" ||
+      d.matchAnyPost ||
+      d.pendingNextReel ||
+      Boolean(d.postId),
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
   // And it must match either specific words or any word.
@@ -96,6 +106,8 @@ const updateAutomationSchema = z.object({
   publicReplyMessages: z.array(z.string().max(1000)).max(10).optional(),
   isActive: z.boolean().optional(),
   wholeWordMatch: z.boolean().optional(),
+  triggerType: z.enum(["COMMENT", "STORY_REPLY", "DM_KEYWORD"]).optional(),
+  welcomeCooldownDays: z.number().int().min(1).max(365).optional().nullable(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
@@ -328,12 +340,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { triggerType } = parsed.data;
+
+  // Story replies are an Instagram-only event; Facebook Pages have no equivalent.
+  if (triggerType === "STORY_REPLY" && instagramAccount.platform !== "INSTAGRAM") {
+    return NextResponse.json(
+      { success: false, error: "Story-reply campaigns are only available on Instagram accounts" },
+      { status: 400 }
+    );
+  }
+
   const { trackedDestinationUrl } = parsed.data;
 
-  const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
-    parsed.data;
-  // A post is only stored for the "specific post" trigger.
-  const isSpecificPost = !pendingNextReel && !matchAnyPost;
+  const { matchAnyWord, openingDmEnabled } = parsed.data;
+  const isComment = triggerType === "COMMENT";
+  // Post targeting only applies to COMMENT campaigns; welcome campaigns ignore it.
+  const pendingNextReel = isComment ? parsed.data.pendingNextReel : false;
+  const matchAnyPost = isComment ? parsed.data.matchAnyPost : false;
+  // A post is only stored for a COMMENT "specific post" trigger.
+  const isSpecificPost = isComment && !pendingNextReel && !matchAnyPost;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -348,6 +373,8 @@ export async function POST(request: NextRequest) {
     data: {
       name: parsed.data.name,
       goal: parsed.data.goal,
+      triggerType,
+      welcomeCooldownDays: isComment ? null : parsed.data.welcomeCooldownDays ?? null,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
       postId: isSpecificPost ? parsed.data.postId : null,
       postUrl: isSpecificPost ? parsed.data.postUrl : null,

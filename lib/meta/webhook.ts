@@ -66,7 +66,17 @@ interface WebhookEntry {
   messaging?: Array<{
     sender?: { id?: string };
     recipient?: { id?: string };
+    timestamp?: number;
     postback?: { mid?: string; title?: string; payload?: string };
+    message?: {
+      mid?: string;
+      text?: string;
+      // True on echoes of the account's OWN sends — must be skipped.
+      is_echo?: boolean;
+      // reply_to.story => the user replied to a story (24h window opener).
+      // reply_to.mid => a reply to a normal message (not a story reply).
+      reply_to?: { mid?: string; story?: { id?: string; url?: string } };
+    };
   }>;
 }
 
@@ -75,6 +85,18 @@ export interface WebhookPostbackEvent {
   userId: string;
   payload: string;
   mid?: string;
+}
+
+export interface WebhookMessageEvent {
+  // IG professional user_id (IG) or Page id (FB) — matches InstagramAccount.instagramId.
+  instagramAccountId: string;
+  senderId: string;
+  text: string;
+  mid: string;
+  // True when the user replied to a story (IG only); false for a plain DM.
+  isStoryReply: boolean;
+  // Epoch ms the message was sent — used for the 24h messaging-window guard.
+  timestamp: number;
 }
 
 interface WebhookPayload {
@@ -107,6 +129,18 @@ interface FacebookPageEntry {
   id: string;
   time?: number;
   changes?: FacebookFeedChange[];
+  // Messenger message events share the same messaging[] shape as Instagram.
+  messaging?: Array<{
+    sender?: { id?: string };
+    recipient?: { id?: string };
+    timestamp?: number;
+    message?: {
+      mid?: string;
+      text?: string;
+      is_echo?: boolean;
+      reply_to?: { mid?: string; story?: { id?: string; url?: string } };
+    };
+  }>;
 }
 
 interface FacebookPagePayload {
@@ -236,6 +270,91 @@ export function parsePostbackEvents(
         userId,
         payload: postbackPayload,
         mid: messaging.postback?.mid,
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Parse incoming Instagram DM / story-reply message events (the `messaging[]`
+ * array, `message` entries) into WebhookMessageEvent. This is what the Welcome
+ * DM reacts to. Postbacks (button taps) are handled by parsePostbackEvents and
+ * are skipped here.
+ */
+export function parseMessageEvents(payload: WebhookPayload): WebhookMessageEvent[] {
+  const events: WebhookMessageEvent[] = [];
+
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      // Not a message (e.g. a postback) — handled elsewhere.
+      if (!message) continue;
+      // Skip echoes of our OWN sends. Without this, a match-any welcome
+      // re-triggers on its own reply and loops.
+      if (message.is_echo) continue;
+
+      const senderId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+      const mid = message.mid;
+
+      if (!senderId || !accountId || !mid) continue;
+      // Ignore the account's own actions.
+      if (senderId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        senderId,
+        text: message.text ?? "",
+        mid,
+        isStoryReply: Boolean(message.reply_to?.story),
+        timestamp: messaging.timestamp ?? Date.now(),
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Parse incoming Facebook Messenger message events into the same
+ * WebhookMessageEvent shape. Page message events use object === "page" and
+ * entry.id = the Page id. Facebook has no story-reply event, so isStoryReply is
+ * always false (these only ever match DM_KEYWORD automations).
+ *
+ * Note: when the app is not the primary message receiver, events arrive under
+ * entry.standby[] instead of entry.messaging[]; those are not handled here.
+ */
+export function parseFacebookMessageEvents(
+  payload: FacebookPagePayload
+): WebhookMessageEvent[] {
+  const events: WebhookMessageEvent[] = [];
+
+  if (payload.object !== "page") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message) continue;
+      if (message.is_echo) continue;
+
+      const senderId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+      const mid = message.mid;
+
+      if (!senderId || !accountId || !mid) continue;
+      if (senderId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        senderId,
+        text: message.text ?? "",
+        mid,
+        isStoryReply: false,
+        timestamp: messaging.timestamp ?? Date.now(),
       });
     }
   }

@@ -4,10 +4,12 @@ import { getDMQueue } from "@/lib/queue/client";
 import {
   parseCommentEvents,
   parseFacebookCommentEvents,
+  parseFacebookMessageEvents,
+  parseMessageEvents,
   parsePostbackEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
-import { POSTBACK_JOB_NAME } from "@/lib/queue/client";
+import { MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from "@/lib/queue/client";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -138,6 +140,47 @@ export async function POST(request: NextRequest) {
           ).replace(/:/g, "_")}`,
         }
       );
+    }
+
+    // Incoming DM / story-reply events → Welcome DM. Instagram ("instagram")
+    // and Facebook Page ("page") message events both normalize to
+    // WebhookMessageEvent and enqueue identically.
+    const messageEvents = [
+      ...parseMessageEvents(payload as Parameters<typeof parseMessageEvents>[0]),
+      ...parseFacebookMessageEvents(
+        payload as Parameters<typeof parseFacebookMessageEvents>[0]
+      ),
+    ];
+
+    for (const event of messageEvents) {
+      const account = await prisma.instagramAccount.findUnique({
+        where: { instagramId: event.instagramAccountId },
+        select: { workspaceId: true },
+      });
+
+      await queue.add(
+        MESSAGE_JOB_NAME,
+        {
+          instagramAccountId: event.instagramAccountId,
+          senderId: event.senderId,
+          text: event.text,
+          mid: event.mid,
+          isStoryReply: event.isStoryReply,
+          messageTimestamp: event.timestamp,
+        },
+        {
+          // Idempotent enqueue: the same message event (mid) never queues twice.
+          // ":" is illegal in BullMQ custom job ids.
+          jobId: `message_${event.instagramAccountId}_${event.mid.replace(/:/g, "_")}`,
+        }
+      );
+
+      if (account) {
+        await prisma.webhookEvent.update({
+          where: { id: webhookEvent.id },
+          data: { workspaceId: account.workspaceId },
+        });
+      }
     }
 
     await prisma.webhookEvent.update({

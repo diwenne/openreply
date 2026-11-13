@@ -156,6 +156,14 @@ model Automation {
   workspaceId        String
   instagramAccountId String
 
+  // What user event fires this campaign. COMMENT is the original behaviour
+  // (comment -> private reply). STORY_REPLY / DM_KEYWORD drive the Welcome DM:
+  // a story reply (IG only) or an incoming DM opens a 24h window we reply into.
+  triggerType TriggerType @default(COMMENT)
+  // Re-welcome cooldown in days for STORY_REPLY / DM_KEYWORD. null = app default
+  // (WELCOME_COOLDOWN_DEFAULT_DAYS). Ignored for COMMENT.
+  welcomeCooldownDays Int?
+
   name                 String
   goal                 String?
   postId               String?
@@ -197,6 +205,8 @@ model Automation {
   @@index([workspaceId])
   @@index([instagramAccountId])
   @@index([postId])
+  // Worker lookup for message/story-reply events: by account + trigger + active.
+  @@index([instagramAccountId, triggerType, isActive])
 }
 
 model DmLog {
@@ -342,6 +352,12 @@ model OperationalEvent {
 enum Platform {
   INSTAGRAM
   FACEBOOK
+}
+
+enum TriggerType {
+  COMMENT
+  STORY_REPLY
+  DM_KEYWORD
 }
 
 enum WorkspaceRole {

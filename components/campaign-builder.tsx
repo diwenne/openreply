@@ -26,10 +26,13 @@ import {
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
+type TriggerType = "COMMENT" | "STORY_REPLY" | "DM_KEYWORD";
 
 interface LoadedCampaign {
   id: string;
   name: string;
+  triggerType: TriggerType;
+  welcomeCooldownDays: number | null;
   postId: string | null;
   postUrl: string | null;
   pendingNextReel: boolean;
@@ -140,6 +143,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
 
+  const [triggerType, setTriggerType] = useState<TriggerType>("COMMENT");
+  const [welcomeCooldownDays, setWelcomeCooldownDays] = useState(30);
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
@@ -185,6 +190,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         .filter(Boolean),
     [keywordText]
   );
+
+  const selectedPlatform =
+    accounts.find((a) => a.id === selectedAccountId)?.platform ?? "INSTAGRAM";
+  const isComment = triggerType === "COMMENT";
+
+  // Facebook has no story-reply event; fall back to a DM trigger if the account
+  // switches to a Page while STORY_REPLY is selected.
+  useEffect(() => {
+    if (selectedPlatform === "FACEBOOK" && triggerType === "STORY_REPLY") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTriggerType("DM_KEYWORD");
+    }
+  }, [selectedPlatform, triggerType]);
 
   // Fetch the connected account's real avatar for the preview (cache-first so
   // it shows instantly on a return visit instead of a blank circle).
@@ -240,6 +258,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         if (!c) return setNotFound(true);
         setName(c.name);
         setSelectedAccountId(c.instagramAccountId);
+        setTriggerType(c.triggerType ?? "COMMENT");
+        setWelcomeCooldownDays(c.welcomeCooldownDays ?? 30);
         setTriggerScope(
           c.matchAnyPost ? "any" : c.pendingNextReel ? "next" : "specific"
         );
@@ -366,36 +386,42 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setError(null);
 
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
-    if (triggerScope === "specific" && !postId)
+    if (isComment && triggerScope === "specific" && !postId)
       return setError("Pick a post or reel to trigger the campaign.");
     if (matchMode === "specific" && keywords.length === 0)
       return setError("Add at least one keyword, or switch to any word.");
-    if (!dmMessage.trim()) return setError("Add the DM with the link.");
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
+    if (!dmMessage.trim())
+      return setError(isComment ? "Add the DM with the link." : "Add the welcome DM.");
+    if (isComment && openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
 
     setSaving(true);
 
+    // Welcome campaigns (story reply / DM) aren't tied to a post and have no
+    // opening-DM button, public reply, or reminder.
     const payload = {
       name: name.trim() || `Campaign for @${username}`,
       instagramAccountId: selectedAccountId,
-      postId: triggerScope === "specific" ? postId : null,
-      postUrl: triggerScope === "specific" ? postUrl : null,
-      matchAnyPost: triggerScope === "any",
-      pendingNextReel: triggerScope === "next",
+      triggerType,
+      welcomeCooldownDays: isComment ? null : welcomeCooldownDays,
+      postId: isComment && triggerScope === "specific" ? postId : null,
+      postUrl: isComment && triggerScope === "specific" ? postUrl : null,
+      matchAnyPost: isComment && triggerScope === "any",
+      pendingNextReel: isComment && triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmMessage,
-      openingDmEnabled,
-      openingDmMessage: openingDmEnabled ? openingDmMessage : null,
-      openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
-      reminderEnabled,
-      reminderDelayMinutes: reminderEnabled ? reminderDelayMinutes : null,
-      reminderMessage: reminderEnabled ? reminderMessage : null,
-      publicReplyEnabled,
-      publicReplyMessages: publicReplyEnabled
-        ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
-        : [],
+      openingDmEnabled: isComment ? openingDmEnabled : false,
+      openingDmMessage: isComment && openingDmEnabled ? openingDmMessage : null,
+      openingDmButtonLabel: isComment && openingDmEnabled ? openingDmButtonLabel : null,
+      reminderEnabled: isComment ? reminderEnabled : false,
+      reminderDelayMinutes: isComment && reminderEnabled ? reminderDelayMinutes : null,
+      reminderMessage: isComment && reminderEnabled ? reminderMessage : null,
+      publicReplyEnabled: isComment ? publicReplyEnabled : false,
+      publicReplyMessages:
+        isComment && publicReplyEnabled
+          ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
+          : [],
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
       linkButtonLabel: linkButtonLabel.trim() || "Open link",
       isActive: activeValue,
@@ -636,38 +662,72 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
 
-        <Section title="When someone comments on">
+        <Section title="What triggers this campaign">
           <Radio
-            checked={triggerScope === "specific"}
-            onSelect={() => setTriggerScope("specific")}
+            checked={triggerType === "COMMENT"}
+            onSelect={() => setTriggerType("COMMENT")}
           >
-            a specific post or reel
+            a comment on a post or reel
           </Radio>
-          {triggerScope === "specific" && (
-            <div className="rounded-lg border border-border p-2">
-              <PostPicker
-                selectedPostId={postId}
-                instagramAccountId={selectedAccountId}
-                usedPostIds={usedPosts}
-                onSelect={handlePostSelect}
-              />
-            </div>
+          {selectedPlatform !== "FACEBOOK" && (
+            <Radio
+              checked={triggerType === "STORY_REPLY"}
+              onSelect={() => setTriggerType("STORY_REPLY")}
+            >
+              a reply to a story
+            </Radio>
           )}
           <Radio
-            checked={triggerScope === "any"}
-            onSelect={() => setTriggerScope("any")}
+            checked={triggerType === "DM_KEYWORD"}
+            onSelect={() => setTriggerType("DM_KEYWORD")}
           >
-            any post or reel
+            a direct message
           </Radio>
-          <Radio
-            checked={triggerScope === "next"}
-            onSelect={() => setTriggerScope("next")}
-          >
-            next post or reel
-          </Radio>
+          {!isComment && (
+            <p className="text-xs text-muted">
+              A welcome DM can only be sent after someone messages you (a story
+              reply or a DM opens a 24-hour window). It can&apos;t be sent to new
+              followers automatically — Meta has no such event.
+            </p>
+          )}
         </Section>
 
-        <Section title="And this comment has">
+        {isComment && (
+          <Section title="When someone comments on">
+            <Radio
+              checked={triggerScope === "specific"}
+              onSelect={() => setTriggerScope("specific")}
+            >
+              a specific post or reel
+            </Radio>
+            {triggerScope === "specific" && (
+              <div className="rounded-lg border border-border p-2">
+                <PostPicker
+                  selectedPostId={postId}
+                  instagramAccountId={selectedAccountId}
+                  usedPostIds={usedPosts}
+                  onSelect={handlePostSelect}
+                />
+              </div>
+            )}
+            <Radio
+              checked={triggerScope === "any"}
+              onSelect={() => setTriggerScope("any")}
+            >
+              any post or reel
+            </Radio>
+            <Radio
+              checked={triggerScope === "next"}
+              onSelect={() => setTriggerScope("next")}
+            >
+              next post or reel
+            </Radio>
+          </Section>
+        )}
+
+        <Section
+          title={isComment ? "And this comment has" : "And the message has"}
+        >
           <Radio
             checked={matchMode === "specific"}
             onSelect={() => setMatchMode("specific")}
@@ -689,8 +749,31 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             checked={matchMode === "any"}
             onSelect={() => setMatchMode("any")}
           >
-            any word
+            {triggerType === "DM_KEYWORD" ? "any message (welcome anyone who DMs)" : "any word"}
           </Radio>
+          {!isComment && (
+            <div className="space-y-1">
+              <label className="text-sm text-foreground">
+                Don&apos;t welcome the same person again for
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={welcomeCooldownDays}
+                  onChange={(e) =>
+                    setWelcomeCooldownDays(
+                      Math.max(1, Math.min(365, Number(e.target.value) || 1))
+                    )
+                  }
+                  className="w-20 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent/40 focus:outline-none"
+                />
+                <span className="text-sm text-muted">days</span>
+              </div>
+            </div>
+          )}
+          {isComment && (
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm text-foreground">
               reply to their comments under the post
@@ -700,7 +783,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
             />
           </div>
-          {publicReplyEnabled && (
+          )}
+          {isComment && publicReplyEnabled && (
             <div className="space-y-2">
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -750,6 +834,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </Section>
 
+        {isComment && (
         <Section title="They will get">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -780,7 +865,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             )}
           </div>
         </Section>
+        )}
 
+        {isComment && (
         <Section title="And if they don't click">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -828,8 +915,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             )}
           </div>
         </Section>
+        )}
 
-        <Section title="And then, they will get">
+        <Section title={isComment ? "And then, they will get" : "They will get"}>
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">a DM with a link</span>
             <textarea

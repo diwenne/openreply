@@ -4,6 +4,8 @@ const {
   mockPrisma,
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
+  mockSendDirectMessage,
+  mockSendDirectMessageWithLinkButton,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -33,6 +35,8 @@ const {
   },
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
+  mockSendDirectMessage: vi.fn(),
+  mockSendDirectMessageWithLinkButton: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -49,8 +53,8 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: vi.fn(),
-  sendDirectMessage: vi.fn(),
-  sendDirectMessageWithLinkButton: vi.fn(),
+  sendDirectMessage: mockSendDirectMessage,
+  sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
   sendCommentReply: vi.fn(),
   MetaApiError: class MetaApiError extends Error {
     code: number;
@@ -95,6 +99,7 @@ vi.mock("@/lib/queue/client", () => ({
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
   REMINDER_JOB_NAME: "process-reminder",
+  MESSAGE_JOB_NAME: "process-message",
 }));
 
 vi.mock("bullmq", () => {
@@ -212,6 +217,14 @@ beforeEach(() => {
   mockSendPrivateReplyWithLinkButton.mockResolvedValue({
     recipient_id: "commenter_999",
     message_id: "msg_002",
+  });
+  mockSendDirectMessage.mockResolvedValue({
+    recipient_id: "user_1",
+    message_id: "msg_003",
+  });
+  mockSendDirectMessageWithLinkButton.mockResolvedValue({
+    recipient_id: "user_1",
+    message_id: "msg_004",
   });
 });
 
@@ -474,6 +487,116 @@ describe("DM Worker — Full Pipeline", () => {
       "Hey commenter_user! Here is the offer:",
       "Get offer",
       "http://localhost:3000/r/abc123?c=dmlog_test"
+    );
+  });
+});
+
+const welcomeAutomation = {
+  id: "auto_welcome",
+  workspaceId: "workspace_123",
+  instagramAccountId: "ig_account_row_1",
+  triggerType: "DM_KEYWORD",
+  welcomeCooldownDays: null,
+  keywords: ["hi"],
+  matchAnyWord: true,
+  wholeWordMatch: true,
+  dmMessage: "Welcome! Thanks for the message 👋",
+  linkButtonLabel: null,
+  isActive: true,
+  instagramAccount: {
+    id: "ig_account_row_1",
+    instagramId: "ig_456",
+    accessToken: "encrypted_token_abc",
+    platform: "INSTAGRAM",
+  },
+  workspace: { id: "workspace_123" },
+  trackedLinks: [],
+};
+
+const welcomeJobData = {
+  instagramAccountId: "ig_456",
+  senderId: "user_1",
+  text: "hi!",
+  mid: "m_1",
+  isStoryReply: false,
+  messageTimestamp: Date.now(),
+};
+
+function createMessageJob(data = welcomeJobData) {
+  return { name: "process-message", data, id: "job_msg", attemptsMade: 0 };
+}
+
+function getMessageProcessor(): (job: unknown) => Promise<void> {
+  createDMWorker();
+  return (global as Record<string, unknown>).__dmWorkerProcessor as (
+    job: unknown
+  ) => Promise<void>;
+}
+
+describe("DM Worker — Welcome DM (process-message)", () => {
+  beforeEach(() => {
+    mockPrisma.automation.findMany.mockResolvedValue([welcomeAutomation]);
+    mockPrisma.dmLog.findUnique.mockResolvedValue(null);
+  });
+
+  it("sends a welcome DM for a matching message", async () => {
+    const processor = getMessageProcessor();
+    await processor(createMessageJob());
+
+    expect(mockPrisma.automation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          triggerType: "DM_KEYWORD",
+          isActive: true,
+          instagramAccount: { instagramId: "ig_456" },
+        }),
+      })
+    );
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "user_1",
+      "Welcome! Thanks for the message 👋"
+    );
+    // Final state is SENT.
+    const sentUpdate = mockPrisma.dmLog.update.mock.calls.find(
+      ([arg]) => arg?.data?.status === "SENT"
+    );
+    expect(sentUpdate).toBeTruthy();
+  });
+
+  it("does not re-welcome a sender already welcomed this window", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({
+      id: "log_x",
+      status: "SENT",
+    });
+    const processor = getMessageProcessor();
+    await processor(createMessageJob());
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("drops a message delayed past the 24h window without spending quota", async () => {
+    const processor = getMessageProcessor();
+    await processor(
+      createMessageJob({
+        ...welcomeJobData,
+        messageTimestamp: Date.now() - 25 * 60 * 60 * 1000,
+      })
+    );
+    expect(mockPrisma.automation.findMany).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes story-reply events to STORY_REPLY automations", async () => {
+    const processor = getMessageProcessor();
+    await processor(
+      createMessageJob({ ...welcomeJobData, isStoryReply: true })
+    );
+    expect(mockPrisma.automation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ triggerType: "STORY_REPLY" }),
+      })
     );
   });
 });

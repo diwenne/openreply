@@ -9,6 +9,8 @@ import {
   verifyWebhookSignature,
   parseCommentEvents,
   parseFacebookCommentEvents,
+  parseMessageEvents,
+  parseFacebookMessageEvents,
 } from "../lib/meta/webhook";
 import { createHmac } from "crypto";
 
@@ -385,5 +387,169 @@ describe("parseFacebookCommentEvents", () => {
       pageComment({ from: { id: "page_1", name: "The Page" } }) as never
     );
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("parseMessageEvents", () => {
+  function igMessage(message: Record<string, unknown>, ts = 1700000000000) {
+    return {
+      object: "instagram",
+      entry: [
+        {
+          id: "acct_1",
+          time: ts,
+          messaging: [
+            {
+              sender: { id: "user_1" },
+              recipient: { id: "acct_1" },
+              timestamp: ts,
+              message,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("parses a plain DM as a non-story message", () => {
+    const events = parseMessageEvents(
+      igMessage({ mid: "m_1", text: "hi there" }) as never
+    );
+    expect(events).toEqual([
+      {
+        instagramAccountId: "acct_1",
+        senderId: "user_1",
+        text: "hi there",
+        mid: "m_1",
+        isStoryReply: false,
+        timestamp: 1700000000000,
+      },
+    ]);
+  });
+
+  it("flags a story reply via reply_to.story", () => {
+    const events = parseMessageEvents(
+      igMessage({
+        mid: "m_2",
+        text: "love this!",
+        reply_to: { story: { id: "s_1", url: "https://..." } },
+      }) as never
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].isStoryReply).toBe(true);
+  });
+
+  it("does NOT flag a reply to a normal message as a story reply", () => {
+    const events = parseMessageEvents(
+      igMessage({ mid: "m_3", text: "ok", reply_to: { mid: "m_prev" } }) as never
+    );
+    expect(events[0].isStoryReply).toBe(false);
+  });
+
+  it("skips echoes of our own sends (is_echo)", () => {
+    const events = parseMessageEvents(
+      igMessage({ mid: "m_4", text: "welcome!", is_echo: true }) as never
+    );
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips the account's own messages (sender === recipient)", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "acct_1",
+          messaging: [
+            {
+              sender: { id: "acct_1" },
+              recipient: { id: "acct_1" },
+              message: { mid: "m_5", text: "x" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMessageEvents(payload as never)).toHaveLength(0);
+  });
+
+  it("skips postback-only entries (no message)", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "acct_1",
+          messaging: [
+            {
+              sender: { id: "user_1" },
+              recipient: { id: "acct_1" },
+              postback: { mid: "m_6", payload: "reveal:auto_1" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMessageEvents(payload as never)).toHaveLength(0);
+  });
+
+  it("ignores page-object payloads", () => {
+    const events = parseMessageEvents(
+      igMessage({ mid: "m_7", text: "hi" }) as never
+    );
+    expect(events).toHaveLength(1);
+    const asPage = { ...igMessage({ mid: "m_7", text: "hi" }), object: "page" };
+    expect(parseMessageEvents(asPage as never)).toHaveLength(0);
+  });
+});
+
+describe("parseFacebookMessageEvents", () => {
+  function fbMessage(message: Record<string, unknown>, ts = 1700000000000) {
+    return {
+      object: "page",
+      entry: [
+        {
+          id: "page_1",
+          time: ts,
+          messaging: [
+            {
+              sender: { id: "psid_1" },
+              recipient: { id: "page_1" },
+              timestamp: ts,
+              message,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("parses a Messenger DM, never a story reply", () => {
+    const events = parseFacebookMessageEvents(
+      fbMessage({
+        mid: "fm_1",
+        text: "hello",
+        // Even if a reply_to.story somehow appears, FB stays isStoryReply:false.
+        reply_to: { story: { id: "s" } },
+      }) as never
+    );
+    expect(events).toEqual([
+      {
+        instagramAccountId: "page_1",
+        senderId: "psid_1",
+        text: "hello",
+        mid: "fm_1",
+        isStoryReply: false,
+        timestamp: 1700000000000,
+      },
+    ]);
+  });
+
+  it("skips is_echo and ignores instagram-object payloads", () => {
+    expect(
+      parseFacebookMessageEvents(
+        fbMessage({ mid: "fm_2", text: "x", is_echo: true }) as never
+      )
+    ).toHaveLength(0);
+    const asIg = { ...fbMessage({ mid: "fm_3", text: "x" }), object: "instagram" };
+    expect(parseFacebookMessageEvents(asIg as never)).toHaveLength(0);
   });
 });

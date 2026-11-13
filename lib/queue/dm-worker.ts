@@ -2,10 +2,12 @@ import { Worker, type Job } from "bullmq";
 import {
   getDMQueue,
   getRedisConnection,
+  MESSAGE_JOB_NAME,
   POSTBACK_JOB_NAME,
   REMINDER_JOB_NAME,
   type DmQueueJob,
   type ProcessCommentJob,
+  type ProcessMessageJob,
   type ProcessPostbackJob,
   type ProcessReminderJob,
 } from "./client";
@@ -46,6 +48,9 @@ const MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Safety margin before the 24h window closes, absorbing comment→send latency
 // and clock skew. ponytail: 1h is conservative; tune if reminders are dropped.
 const REMINDER_SAFETY_BUFFER_MS = 60 * 60 * 1000;
+
+// Default re-welcome cooldown when an automation sets none (see schema).
+const WELCOME_COOLDOWN_DEFAULT_DAYS = 30;
 
 function formatError(error: unknown): string {
   if (error instanceof MetaApiError) {
@@ -701,6 +706,193 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 }
 
 /**
+ * Welcome DM: react to an incoming DM (DM_KEYWORD) or story reply (STORY_REPLY,
+ * Instagram only). The user's message opened a 24h messaging window, so we reply
+ * straight into it with sendDirectMessage — no comment, no opening-DM button.
+ *
+ * Dedup/cooldown: a synthetic DmLog key `welcome:<senderId>:<bucket>` against the
+ * @@unique(automationId, commentId) means one welcome per sender per automation
+ * per cooldown window (welcomeCooldownDays, default WELCOME_COOLDOWN_DEFAULT_DAYS).
+ */
+async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
+  const { instagramAccountId, senderId, text, isStoryReply, messageTimestamp } =
+    job.data;
+
+  // 24h window guard. The window opened at the user's message, so a prompt send
+  // is fine; this only drops events delayed past the window by retries/outage,
+  // before they burn a plan-limit reservation. No throw → no retry.
+  if (
+    Date.now() - messageTimestamp >=
+    MESSAGING_WINDOW_MS - REMINDER_SAFETY_BUFFER_MS
+  ) {
+    return;
+  }
+
+  const wanted = isStoryReply ? "STORY_REPLY" : "DM_KEYWORD";
+
+  const automations = await prisma.automation.findMany({
+    where: {
+      triggerType: wanted,
+      isActive: true,
+      instagramAccount: { instagramId: instagramAccountId },
+    },
+    include: {
+      instagramAccount: true,
+      workspace: true,
+      trackedLinks: {
+        select: { slug: true, destinationUrl: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const automation of automations) {
+    const matchResult = automation.matchAnyWord
+      ? { matched: true, matchedKeyword: null }
+      : matchKeywords(text, automation.keywords, automation.wholeWordMatch);
+    if (!matchResult.matched) continue;
+
+    // Fixed-grid cooldown bucket → one welcome per sender per cooldown window.
+    // ponytail: fixed grid, loose (0, N]-day boundary; switch to a rolling gap
+    // (store lastWelcomedAt) only if the boundary matters.
+    const cooldownDays =
+      automation.welcomeCooldownDays ?? WELCOME_COOLDOWN_DEFAULT_DAYS;
+    const bucket = Math.floor(
+      Date.now() / (cooldownDays * 24 * 60 * 60 * 1000)
+    );
+    const dedupeId = `welcome:${senderId}:${bucket}`;
+
+    const key = {
+      automationId_commentId: { automationId: automation.id, commentId: dedupeId },
+    };
+
+    const existingLog = await prisma.dmLog.findUnique({ where: key });
+    // Already welcomed this window, or already hit the plan limit — nothing to do.
+    if (existingLog?.status === "SENT") continue;
+    if (existingLog?.status === "SKIPPED_PLAN_LIMIT") continue;
+
+    const logBase = {
+      workspaceId: automation.workspaceId,
+      automationId: automation.id,
+      instagramAccountId: automation.instagramAccountId,
+      commenterId: senderId,
+      commenterName: null,
+      commentText: text || (isStoryReply ? "(story reply)" : "(direct message)"),
+      commentId: dedupeId,
+      matchedKeyword: matchResult.matchedKeyword,
+    };
+
+    if (!automation.instagramAccount.accessToken) {
+      await prisma.dmLog.upsert({
+        where: key,
+        create: { ...logBase, status: "FAILED", errorMessage: "No Instagram access token available" },
+        update: { status: "FAILED", errorMessage: "No Instagram access token available" },
+      });
+      continue;
+    }
+
+    let accessToken: string;
+    try {
+      accessToken = decryptToken(automation.instagramAccount.accessToken);
+    } catch {
+      await prisma.dmLog.upsert({
+        where: key,
+        create: { ...logBase, status: "FAILED", errorMessage: "Failed to decrypt Instagram access token" },
+        update: { status: "FAILED", errorMessage: "Failed to decrypt Instagram access token" },
+      });
+      continue;
+    }
+
+    const usage = await reserveWorkspaceDMSend(automation.workspaceId);
+    if (!usage.allowed) {
+      await prisma.dmLog.upsert({
+        where: key,
+        create: { ...logBase, status: "SKIPPED_PLAN_LIMIT", errorMessage: `Monthly DM limit reached (${usage.limit})` },
+        update: { status: "SKIPPED_PLAN_LIMIT", errorMessage: `Monthly DM limit reached (${usage.limit})` },
+      });
+      continue;
+    }
+
+    const rateLimit = await reserveDMSlot(instagramAccountId);
+    if (!rateLimit.allowed) {
+      await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+      // ponytail: a dropped welcome on rate-limit is acceptable; add a requeue
+      // like processComment if welcomes start getting starved.
+      await prisma.dmLog.upsert({
+        where: key,
+        create: { ...logBase, status: "SKIPPED_RATE_LIMIT", errorMessage: "Hourly Instagram DM rate limit reached" },
+        update: { status: "SKIPPED_RATE_LIMIT", errorMessage: "Hourly Instagram DM rate limit reached" },
+      });
+      continue;
+    }
+
+    // Ensure a log row exists (PENDING) so a tracked link can attribute to it.
+    const logRow = await prisma.dmLog.upsert({
+      where: key,
+      create: { ...logBase, status: "PENDING", attempts: job.attemptsMade + 1 },
+      update: { status: "PENDING", attempts: job.attemptsMade + 1, errorMessage: null },
+    });
+
+    const acctId = automation.instagramAccount.instagramId;
+    const send = senders(automation.instagramAccount.platform);
+    const primaryLink = automation.trackedLinks[0];
+
+    try {
+      if (primaryLink) {
+        const bodyText =
+          renderMessageWithoutLink({ message: automation.dmMessage, commenterName: null }) ||
+          "Here's your link:";
+        const trackedUrl = buildTrackedUrl(primaryLink.slug, undefined, logRow.id);
+        try {
+          await send.directMessageWithLinkButton(
+            accessToken,
+            acctId,
+            senderId,
+            bodyText,
+            automation.linkButtonLabel || "Open link",
+            trackedUrl
+          );
+        } catch (buttonError) {
+          // Button template rejected; send as text with inline link instead.
+          console.log(
+            "[DM Worker] Button template rejected in welcome, falling back to inline link:",
+            formatError(buttonError)
+          );
+          const fallbackMessage =
+            renderMessageWithTracking({
+              message: automation.dmMessage,
+              commenterName: null,
+              trackedLinks: [primaryLink],
+              dmLogId: logRow.id,
+            }) || `${bodyText}\n${trackedUrl}`;
+          await send.directMessage(accessToken, acctId, senderId, fallbackMessage);
+        }
+      } else {
+        const message = renderMessageWithTracking({
+          message: automation.dmMessage,
+          commenterName: null,
+          trackedLinks: [],
+        });
+        await send.directMessage(accessToken, acctId, senderId, message);
+      }
+
+      await prisma.dmLog.update({
+        where: key,
+        data: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
+      });
+    } catch (error) {
+      await releaseWorkspaceDMReservation(automation.workspaceId, usage.periodStart);
+      await prisma.dmLog.update({
+        where: key,
+        data: { status: "FAILED", attempts: job.attemptsMade + 1, errorMessage: formatError(error) },
+      });
+      throw error;
+    }
+  }
+}
+
+/**
  * Send one "you didn't click yet" reminder DM, if the commenter hasn't clicked
  * the tracked link and we're still inside Instagram's 24h messaging window.
  * Idempotent via reminderSentAt; records why it skipped in reminderSkippedReason.
@@ -826,6 +1018,9 @@ async function processJob(job: Job<DmQueueJob>): Promise<void> {
   }
   if (job.name === REMINDER_JOB_NAME) {
     return processReminder(job as Job<ProcessReminderJob>);
+  }
+  if (job.name === MESSAGE_JOB_NAME) {
+    return processMessage(job as Job<ProcessMessageJob>);
   }
   return processComment(job as Job<ProcessCommentJob>);
 }
