@@ -88,7 +88,7 @@ export async function sendPrivateReply({
 }) {
   if (context.provider === "META")
     return meta.sendPrivateReply(
-      context.accessToken,
+      context,
       instagramAccountId,
       commentId,
       message
@@ -115,7 +115,7 @@ export async function sendPrivateReplyWithButton({
 }) {
   if (context.provider === "META")
     return meta.sendPrivateReplyWithButton(
-      context.accessToken,
+      context,
       instagramAccountId,
       commentId,
       text,
@@ -148,7 +148,7 @@ export async function sendDirectMessageWithButton({
 }) {
   if (context.provider === "META")
     return meta.sendDirectMessageWithButton(
-      context.accessToken,
+      context,
       instagramAccountId,
       userId,
       text,
@@ -180,7 +180,7 @@ export async function sendPrivateReplyWithLinkButton({
 }) {
   if (context.provider === "META")
     return meta.sendPrivateReplyWithLinkButton(
-      context.accessToken,
+      context,
       instagramAccountId,
       commentId,
       text,
@@ -208,7 +208,7 @@ export async function sendDirectMessage({
 }) {
   if (context.provider === "META")
     return meta.sendDirectMessage(
-      context.accessToken,
+      context,
       instagramAccountId,
       userId,
       message
@@ -231,7 +231,7 @@ export async function sendDirectMessageWithLinkButton({
 }) {
   if (context.provider === "META")
     return meta.sendDirectMessageWithLinkButton(
-      context.accessToken,
+      context,
       instagramAccountId,
       userId,
       text,
@@ -257,7 +257,7 @@ export async function sendCommentReply({
   postId?: string;
 }) {
   if (context.provider === "META")
-    return meta.sendCommentReply(context.accessToken, commentId, message);
+    return meta.sendCommentReply(context, commentId, message);
   const result = await zernioRequest<{ data: { commentId: string } }>({
     apiKey: context.apiKey,
     path: `/inbox/comments/${encodeURIComponent(postId ?? commentId)}`,
