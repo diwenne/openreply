@@ -148,6 +148,10 @@ model InstagramAccount {
   username          String
   name              String?
   provider          InstagramProvider @default(META)
+  /// Which Meta setup issued the token, for META accounts. Existing rows are
+  /// INSTAGRAM: their tokens only work on graph.instagram.com. UNIFIED tokens
+  /// are business system user tokens that only work on graph.facebook.com.
+  metaLogin         MetaLogin @default(INSTAGRAM)
   zernioAccountId   String?
   accessToken       String
   tokenExpiresAt    DateTime?
@@ -417,6 +421,12 @@ enum OperationalEventLevel {
 enum InstagramProvider {
   META
   ZERNIO
+}
+
+/// Instagram Login (Business Login for Instagram) or Meta's Unified login.
+enum MetaLogin {
+  INSTAGRAM
+  UNIFIED
 }
 
 model ZernioConnection {

@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     where: {
       accessToken: { not: "" },
       provider: "META",
+      // Unified login tokens cannot be refreshed with ig_refresh_token; one
+      // that expires needs the client to connect again.
+      metaLogin: "INSTAGRAM",
       tokenExpiresAt: {
         not: null,
         lte: cutoffDate,

@@ -87,6 +87,7 @@ export async function reconcileComments(): Promise<void> {
           username: true,
           accessToken: true,
           provider: true,
+          metaLogin: true,
           workspaceId: true,
           zernioAccountId: true,
         },
@@ -136,6 +137,7 @@ async function sweepCampaign({
       username: string;
       accessToken: string;
       provider: "META" | "ZERNIO";
+      metaLogin: "INSTAGRAM" | "UNIFIED";
       workspaceId: string;
       zernioAccountId: string | null;
     };

@@ -19,7 +19,7 @@ For the step-by-step setup, see [setup.md](setup.md).
 | Styling | Tailwind CSS 4 |
 | Tests | Vitest 4 |
 | Worker runtime | `tsx` (runs `worker/dm-worker.ts`) |
-| Instagram | Official Meta Graph API (Instagram Login) |
+| Instagram | Official Meta Graph API (Instagram Login or Unified login) |
 
 ## Runtime — two processes, two datastores
 
@@ -49,7 +49,7 @@ worker + Postgres + Redis) are covered in [setup.md](setup.md).
 | Redis | Redis Cloud (Essentials) | Free (30 MB, TCP) |
 | Worker (24/7) | Oracle Cloud "Always Free" VM (VM.Standard.E2.1.Micro, Ubuntu 22.04, kept alive with `pm2`) | Free forever |
 | Login email | Resend | Free (3k emails/mo) |
-| Instagram API | Meta app with Instagram Login | Free |
+| Instagram API | Meta app with Instagram Login or Unified login | Free |
 
 ## Environment variables
 
@@ -59,4 +59,4 @@ in the repo. Full descriptions are in [setup.md](setup.md#environment-variables)
 `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `CRON_SECRET`, `ENCRYPTION_KEY`, `DATABASE_URL`,
 `REDIS_URL`, `RESEND_API_KEY`, `EMAIL_FROM`, `META_GRAPH_API_VERSION`,
 `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `FACEBOOK_APP_SECRET`,
-`WEBHOOK_VERIFY_TOKEN`.
+`WEBHOOK_VERIFY_TOKEN`, and for Unified login `META_LOGIN_CONFIG_ID`, `META_APP_ID`.

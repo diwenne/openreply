@@ -36,8 +36,18 @@ const INSTAGRAM_OAUTH_ENV = [
   "NEXTAUTH_SECRET",
 ] as const;
 
+// Unified login authenticates as the Meta app itself, not its Instagram app.
+const UNIFIED_OAUTH_ENV = [
+  "META_LOGIN_CONFIG_ID",
+  "META_APP_ID",
+  "FACEBOOK_APP_SECRET",
+  "ENCRYPTION_KEY",
+  "NEXTAUTH_SECRET",
+] as const;
+
 export function getMissingInstagramOAuthEnv(): string[] {
-  return INSTAGRAM_OAUTH_ENV.filter((name) => {
+  const required = isUnifiedLogin() ? UNIFIED_OAUTH_ENV : INSTAGRAM_OAUTH_ENV;
+  return required.filter((name) => {
     const value = process.env[name];
     if (!value) return true;
     // A malformed key fails later inside encryptToken, after the user has
@@ -48,6 +58,16 @@ export function getMissingInstagramOAuthEnv(): string[] {
 
 export function getMetaGraphApiVersion(): string {
   return process.env.META_GRAPH_API_VERSION ?? "v25.0";
+}
+
+// Meta apps created from October 2026 only offer "API setup with Unified
+// login" (issues #103, #104). Setting the login configuration's ID makes new
+// connections go through Unified login, with META_APP_ID and
+// FACEBOOK_APP_SECRET (App settings > Basic). It decides only how accounts
+// connect: each account records the login that issued its token, so accounts
+// already connected through Instagram Login keep working either way.
+export function isUnifiedLogin(): boolean {
+  return Boolean(process.env.META_LOGIN_CONFIG_ID);
 }
 
 /**

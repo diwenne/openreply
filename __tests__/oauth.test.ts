@@ -4,6 +4,7 @@ import {
   createOAuthState,
   decryptToken,
   encryptToken,
+  getAuthorizationUrl,
   verifyOAuthState,
 } from "../lib/meta/oauth";
 
@@ -83,5 +84,31 @@ describe("OAuth state and token encryption", () => {
         signedState({ workspaceId: 123, ts: Date.now() })
       )
     ).toBeNull();
+  });
+});
+
+describe("authorization URL", () => {
+  it("uses Instagram Login when no login configuration is set", () => {
+    vi.stubEnv("INSTAGRAM_APP_ID", "123");
+    vi.stubEnv("META_LOGIN_CONFIG_ID", "");
+    const url = new URL(getAuthorizationUrl("https://app.test/cb", "s"));
+    expect(url.origin).toBe("https://www.instagram.com");
+    expect(url.searchParams.get("scope")).toContain("instagram_business_basic");
+  });
+
+  it("uses the Facebook dialog with config_id under Unified login", () => {
+    vi.stubEnv("INSTAGRAM_APP_ID", "123");
+    vi.stubEnv("META_APP_ID", "789");
+    vi.stubEnv("META_LOGIN_CONFIG_ID", "456");
+    const url = new URL(getAuthorizationUrl("https://app.test/cb", "s"));
+    expect(url.origin).toBe("https://www.facebook.com");
+    expect(url.pathname).toBe("/dialog/oauth");
+    expect(url.searchParams.get("config_id")).toBe("456");
+    // The Meta app's own ID, not the Instagram app ID.
+    expect(url.searchParams.get("client_id")).toBe("789");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.test/cb");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("state")).toBe("s");
+    expect(url.searchParams.has("scope")).toBe(false);
   });
 });

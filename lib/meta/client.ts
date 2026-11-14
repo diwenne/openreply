@@ -1,7 +1,29 @@
 import { getMetaGraphApiVersion, requireEnv } from "@/lib/env";
 
-function instagramGraphBase() {
-  return `https://graph.instagram.com/${getMetaGraphApiVersion()}`;
+/**
+ * A Meta access token and the setup that issued it. A bare string is an
+ * Instagram Login token, which is what every account connected before Unified
+ * login support holds. The Instagram META context satisfies the object form.
+ */
+export type MetaAuth =
+  | string
+  | { accessToken: string; unifiedLogin?: boolean };
+
+function tokenOf(auth: MetaAuth): string {
+  return typeof auth === "string" ? auth : auth.accessToken;
+}
+
+function isUnified(auth: MetaAuth): boolean {
+  return typeof auth !== "string" && Boolean(auth.unifiedLogin);
+}
+
+// An Instagram Login token only works on graph.instagram.com; a Unified login
+// token (a business system user token) only on graph.facebook.com. The
+// Instagram endpoints keep the same paths on both hosts.
+function instagramGraphBase(auth: MetaAuth) {
+  return isUnified(auth)
+    ? facebookGraphBase()
+    : `https://graph.instagram.com/${getMetaGraphApiVersion()}`;
 }
 
 function facebookGraphBase() {
@@ -162,13 +184,14 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export async function sendPrivateReply(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   commentId: string,
   message: string
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -192,15 +215,16 @@ export async function sendPrivateReply(
  * the follow-up ("reveal") message.
  */
 export async function sendPrivateReplyWithButton(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   commentId: string,
   text: string,
   buttonTitle: string,
   payload: string
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -235,15 +259,16 @@ export async function sendPrivateReplyWithButton(
  * the button fires another `messaging_postbacks` webhook carrying `payload`.
  */
 export async function sendDirectMessageWithButton(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   userId: string,
   text: string,
   buttonTitle: string,
   payload: string
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -279,10 +304,11 @@ export async function sendDirectMessageWithButton(
  * how to treat the unverifiable case.
  */
 export async function getUserFollowStatus(
-  accessToken: string,
+  auth: MetaAuth,
   recipientId: string
 ): Promise<boolean | null> {
-  const url = new URL(`${instagramGraphBase()}/${recipientId}`);
+  const accessToken = tokenOf(auth);
+  const url = new URL(`${instagramGraphBase(auth)}/${recipientId}`);
   url.searchParams.set("fields", "is_user_follow_business");
 
   try {
@@ -310,10 +336,11 @@ export async function getUserFollowStatus(
  * handle cannot be read, so the caller falls back as before.
  */
 export async function getUserUsername(
-  accessToken: string,
+  auth: MetaAuth,
   recipientId: string
 ): Promise<string | null> {
-  const url = new URL(`${instagramGraphBase()}/${recipientId}`);
+  const accessToken = tokenOf(auth);
+  const url = new URL(`${instagramGraphBase(auth)}/${recipientId}`);
   url.searchParams.set("fields", "username");
 
   try {
@@ -352,14 +379,15 @@ function toWebUrlButtons(buttons: LinkButton[]) {
  * no opening DM, where the reveal is delivered straight to the comment).
  */
 export async function sendPrivateReplyWithLinkButton(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   commentId: string,
   text: string,
   buttons: LinkButton[]
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -390,13 +418,14 @@ export async function sendPrivateReplyWithLinkButton(
  * Used to deliver the reveal message after a button postback.
  */
 export async function sendDirectMessage(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   userId: string,
   message: string
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -418,14 +447,15 @@ export async function sendDirectMessage(
  * the reveal message plus tappable link buttons (cleaner than inline URLs).
  */
 export async function sendDirectMessageWithLinkButton(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   userId: string,
   text: string,
   buttons: LinkButton[]
 ): Promise<{ recipient_id: string; message_id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/messages`,
     {
       method: "POST",
       headers: {
@@ -452,12 +482,13 @@ export async function sendDirectMessageWithLinkButton(
 }
 
 export async function sendCommentReply(
-  accessToken: string,
+  auth: MetaAuth,
   commentId: string,
   message: string
 ): Promise<{ id: string }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${commentId}/replies`,
+    `${instagramGraphBase(auth)}/${commentId}/replies`,
     {
       method: "POST",
       headers: {
@@ -472,10 +503,11 @@ export async function sendCommentReply(
 }
 
 export async function getMediaComments(
-  accessToken: string,
+  auth: MetaAuth,
   mediaId: string
 ): Promise<InstagramComment[]> {
-  const url = new URL(`${instagramGraphBase()}/${mediaId}/comments`);
+  const accessToken = tokenOf(auth);
+  const url = new URL(`${instagramGraphBase(auth)}/${mediaId}/comments`);
   url.searchParams.set("fields", "id,text,from,timestamp");
   url.searchParams.set("access_token", accessToken);
 
@@ -496,14 +528,15 @@ export async function getMediaComments(
  * results.
  */
 export async function getRecentMediaComments(
-  accessToken: string,
+  auth: MetaAuth,
   mediaId: string,
   sinceMs: number,
   max = 800
 ): Promise<InstagramComment[]> {
+  const accessToken = tokenOf(auth);
   const results: InstagramComment[] = [];
 
-  const first = new URL(`${instagramGraphBase()}/${mediaId}/comments`);
+  const first = new URL(`${instagramGraphBase(auth)}/${mediaId}/comments`);
   first.searchParams.set("fields", "id,text,timestamp,from,replies{from}");
   first.searchParams.set("order", "reverse_chronological");
   first.searchParams.set("limit", "50");
@@ -565,9 +598,10 @@ export interface InstagramConversation {
  * transport and minimal-list failures remain visible rather than looking empty.
  */
 export async function getConversations(
-  accessToken: string,
+  auth: MetaAuth,
   igUserId: string
 ): Promise<InstagramConversation[]> {
+  const accessToken = tokenOf(auth);
   const fields =
     "participants,updated_time,messages.limit(1){message,from,created_time}";
   type Page = {
@@ -583,7 +617,7 @@ export async function getConversations(
   async function readPage(limit: number, requestedFields: string): Promise<Page> {
     // Never follow Meta's next URL: rebuild on our trusted host and carry the
     // token separately. A messages.paging cursor must never advance this list.
-    const url = new URL(`${instagramGraphBase()}/${igUserId}/conversations`);
+    const url = new URL(`${instagramGraphBase(auth)}/${igUserId}/conversations`);
     url.searchParams.set("platform", "instagram");
     url.searchParams.set("fields", requestedFields);
     url.searchParams.set("limit", String(limit));
@@ -650,10 +684,11 @@ export async function getConversations(
  * for the 20 most recent messages, newest first.
  */
 export async function getConversationMessages(
-  accessToken: string,
+  auth: MetaAuth,
   conversationId: string
 ): Promise<InstagramMessage[]> {
-  const url = new URL(`${instagramGraphBase()}/${conversationId}`);
+  const accessToken = tokenOf(auth);
+  const url = new URL(`${instagramGraphBase(auth)}/${conversationId}`);
   url.searchParams.set("fields", "messages{id,created_time,from,to,message}");
   url.searchParams.set("access_token", accessToken);
 
@@ -664,16 +699,59 @@ export async function getConversationMessages(
   return data.messages?.data ?? [];
 }
 
-export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
-  const url = new URL(`${instagramGraphBase()}/me`);
+// A Unified login token belongs to the client business's system user, not to
+// one Instagram account, and one login can grant several. They are the assets
+// the client assigned during login. In practice this comes back empty unless
+// the login configuration also includes business_management (issue #104).
+export async function getAssignedInstagramAccounts(
+  accessToken: string
+): Promise<{ id: string; username?: string }[]> {
+  const url = new URL(`${facebookGraphBase()}/me/assigned_instagram_accounts`);
+  url.searchParams.set("fields", "id,username");
+  url.searchParams.set("access_token", accessToken);
+  const data = await handleResponse<{ data?: { id: string; username?: string }[] }>(
+    await fetch(url.toString())
+  );
+  const accounts = data.data ?? [];
+  if (!accounts.length) {
+    throw new Error(
+      "No Instagram account is assigned to this login. Add business_management to the Meta login configuration and connect again."
+    );
+  }
+  return accounts;
+}
+
+// With an Instagram Login token `me` is the Instagram account, which is how
+// these calls have always been made. With a Unified login token `me` is the
+// system user, so the account has to be named by its ID.
+function instagramNode(auth: MetaAuth, igUserId?: string): string {
+  if (!isUnified(auth)) return "me";
+  if (!igUserId) {
+    throw new Error("A Unified login call needs the Instagram account ID");
+  }
+  return igUserId;
+}
+
+export async function getUserInfo(
+  auth: MetaAuth,
+  igUserId?: string
+): Promise<InstagramUser> {
+  const accessToken = tokenOf(auth);
+  const node = instagramNode(auth, igUserId);
+  const url = new URL(`${instagramGraphBase(auth)}/${node}`);
   url.searchParams.set(
     "fields",
-    "id,user_id,username,name,profile_picture_url,followers_count"
+    isUnified(auth)
+      ? "id,username,name,profile_picture_url,followers_count"
+      : "id,user_id,username,name,profile_picture_url,followers_count"
   );
   url.searchParams.set("access_token", accessToken);
 
   const response = await fetch(url.toString());
-  return handleResponse<InstagramUser>(response);
+  const user = await handleResponse<InstagramUser>(response);
+  // On graph.facebook.com `id` already is the professional account ID, and
+  // there is no user_id field to ask for.
+  return isUnified(auth) ? { ...user, user_id: user.id } : user;
 }
 
 const MEDIA_FIELDS =
@@ -683,10 +761,13 @@ const MEDIA_FIELDS =
 const MEDIA_PAGE_SIZE = 100;
 
 export async function getUserMedia(
-  accessToken: string,
-  limit = 25
+  auth: MetaAuth,
+  limit = 25,
+  igUserId?: string
 ): Promise<InstagramMedia[]> {
-  const url = new URL(`${instagramGraphBase()}/me/media`);
+  const accessToken = tokenOf(auth);
+  const node = instagramNode(auth, igUserId);
+  const url = new URL(`${instagramGraphBase(auth)}/${node}/media`);
   url.searchParams.set("fields", MEDIA_FIELDS);
   url.searchParams.set("limit", limit.toString());
   url.searchParams.set("access_token", accessToken);
@@ -703,12 +784,15 @@ export async function getUserMedia(
  * forever (and so downstream per-media insight calls stay bounded).
  */
 export async function getAllUserMedia(
-  accessToken: string,
-  max = 500
+  auth: MetaAuth,
+  max = 500,
+  igUserId?: string
 ): Promise<InstagramMedia[]> {
+  const accessToken = tokenOf(auth);
   const results: InstagramMedia[] = [];
 
-  const first = new URL(`${instagramGraphBase()}/me/media`);
+  const node = instagramNode(auth, igUserId);
+  const first = new URL(`${instagramGraphBase(auth)}/${node}/media`);
   first.searchParams.set("fields", MEDIA_FIELDS);
   first.searchParams.set("limit", String(Math.min(MEDIA_PAGE_SIZE, max)));
   first.searchParams.set("access_token", accessToken);
@@ -737,11 +821,12 @@ export async function getAllUserMedia(
  * the given media (e.g. `views` is not valid for image posts on some accounts).
  */
 export async function getMediaInsights(
-  accessToken: string,
+  auth: MetaAuth,
   mediaId: string,
   metrics: string[]
 ): Promise<InstagramMediaInsights> {
-  const url = new URL(`${instagramGraphBase()}/${mediaId}/insights`);
+  const accessToken = tokenOf(auth);
+  const url = new URL(`${instagramGraphBase(auth)}/${mediaId}/insights`);
   url.searchParams.set("metric", metrics.join(","));
   url.searchParams.set("access_token", accessToken);
 
@@ -783,15 +868,16 @@ const FOLLOWER_INSIGHT_MAX_DAYS = 30;
  * anchoring on a known `followers_count` and walking backwards.
  */
 export async function getFollowerCountSeries(
-  accessToken: string,
+  auth: MetaAuth,
   instagramAccountId: string,
   days: number = FOLLOWER_INSIGHT_MAX_DAYS
 ): Promise<FollowerCountPoint[] | null> {
+  const accessToken = tokenOf(auth);
   const span = Math.min(Math.max(days, 1), FOLLOWER_INSIGHT_MAX_DAYS);
   const until = Math.floor(Date.now() / 1000);
   const since = until - (span - 1) * 86_400;
 
-  const url = new URL(`${instagramGraphBase()}/${instagramAccountId}/insights`);
+  const url = new URL(`${instagramGraphBase(auth)}/${instagramAccountId}/insights`);
   url.searchParams.set("metric", "follower_count");
   url.searchParams.set("period", "day");
   url.searchParams.set("since", String(since));
@@ -827,10 +913,12 @@ export async function getFollowerCountSeries(
   }
 }
 
+// Instagram Login only: exchanges the short-lived token from the OAuth code for
+// a 60-day one. A Unified login code already yields the final token.
 export async function getLongLivedToken(
   shortLivedToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const url = new URL(`${instagramGraphBase()}/access_token`);
+  const url = new URL(`${instagramGraphBase(shortLivedToken)}/access_token`);
   url.searchParams.set("grant_type", "ig_exchange_token");
   url.searchParams.set("client_secret", requireEnv("INSTAGRAM_APP_SECRET"));
   url.searchParams.set("access_token", shortLivedToken);
@@ -844,10 +932,12 @@ export async function getLongLivedToken(
   };
 }
 
+// Instagram Login only. Unified login tokens are not refreshable this way, so
+// the refresh cron leaves those accounts alone.
 export async function refreshLongLivedToken(
   longLivedToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const url = new URL(`${instagramGraphBase()}/refresh_access_token`);
+  const url = new URL(`${instagramGraphBase(longLivedToken)}/refresh_access_token`);
   url.searchParams.set("grant_type", "ig_refresh_token");
   url.searchParams.set("access_token", longLivedToken);
 
@@ -862,10 +952,11 @@ export async function refreshLongLivedToken(
 
 export async function subscribeInstagramAccountToWebhooks(
   instagramAccountId: string,
-  accessToken: string
+  auth: MetaAuth
 ): Promise<{ success: boolean }> {
+  const accessToken = tokenOf(auth);
   const response = await fetch(
-    `${instagramGraphBase()}/${instagramAccountId}/subscribed_apps`,
+    `${instagramGraphBase(auth)}/${instagramAccountId}/subscribed_apps`,
     {
       method: "POST",
       headers: {
@@ -879,6 +970,24 @@ export async function subscribeInstagramAccountToWebhooks(
   );
 
   return handleResponse(response);
+}
+
+/**
+ * When a Unified login token expires, or null if it never does. The expiry is
+ * set by the login configuration, so it is read from the token rather than
+ * assumed. Asked with the app's own token, which debug_token accepts for any
+ * token the app issued.
+ */
+export async function getUnifiedTokenExpiry(
+  accessToken: string,
+  appId: string,
+  appSecret: string
+): Promise<Date | null> {
+  const data = (await debugToken(accessToken, `${appId}|${appSecret}`)) as {
+    data?: { expires_at?: number };
+  };
+  const expiresAt = data.data?.expires_at;
+  return expiresAt ? new Date(expiresAt * 1000) : null;
 }
 
 export async function debugToken(inputToken: string, accessToken: string) {
