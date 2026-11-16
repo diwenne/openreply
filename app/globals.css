@@ -106,3 +106,45 @@ select:focus-visible {
   font-display: swap;
 }
 .zernio-sponsor { font-family: 'Zernio Geist', sans-serif; }
+
+@keyframes comet-flow {
+  0% {
+    transform: translateX(-140px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(1200px);
+    opacity: 0;
+  }
+}
+
+.comet-beam {
+  animation: comet-flow 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes comet-flow-vertical {
+  0% {
+    transform: translateY(-120px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(1100px);
+    opacity: 0;
+  }
+}
+
+.comet-beam-vertical {
+  animation: comet-flow-vertical 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
