@@ -94,15 +94,13 @@ export function Navbar({ stars = "3.3K" }: { stars?: string }) {
               Sign in
             </Link>
 
-            <a
-              href="https://github.com/diwenne/openreply/blob/main/docs/setup.md"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/login"
               className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#fafafa] hover:bg-white text-[#09090b] text-[13px] font-semibold transition-colors whitespace-nowrap"
             >
               <span>Get started</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
-            </a>
+            </Link>
 
             <button
               type="button"
@@ -172,16 +170,14 @@ export function Navbar({ stars = "3.3K" }: { stars?: string }) {
           >
             Sign in
           </Link>
-          <a
-            href="https://github.com/diwenne/openreply/blob/main/docs/setup.md"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/login"
             onClick={() => setOpen(false)}
             className="inline-flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[#fafafa] hover:bg-white text-[#09090b] text-[15px] font-semibold transition-colors"
           >
             <span>Get started</span>
             <ArrowUpRight className="w-4 h-4" />
-          </a>
+          </Link>
         </div>
       </div>
     </>
