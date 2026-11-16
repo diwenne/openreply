@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "./ArrowUpRight";
 
@@ -86,6 +87,13 @@ export function Navbar({ stars = "3.3K" }: { stars?: string }) {
 
             <span className="hidden sm:block h-4 w-px bg-white/15" aria-hidden="true" />
 
+            <Link
+              href="/login"
+              className="hidden md:inline-flex items-center px-3 py-1.5 text-[13px] font-medium text-[#a1a1aa] hover:text-white transition-colors whitespace-nowrap"
+            >
+              Sign in
+            </Link>
+
             <a
               href="https://github.com/diwenne/openreply/blob/main/docs/setup.md"
               target="_blank"
@@ -157,6 +165,13 @@ export function Navbar({ stars = "3.3K" }: { stars?: string }) {
         </nav>
 
         <div className="pt-6 border-t border-white/10 flex flex-col gap-3">
+          <Link
+            href="/login"
+            onClick={() => setOpen(false)}
+            className="inline-flex items-center justify-center w-full py-3 rounded-xl bg-[#18181b] border border-white/10 text-white text-[15px] font-medium transition-colors"
+          >
+            Sign in
+          </Link>
           <a
             href="https://github.com/diwenne/openreply/blob/main/docs/setup.md"
             target="_blank"
