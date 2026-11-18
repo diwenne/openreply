@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { zernioInstagramId } from './account-id';
 import { zernioRequest } from './client';
 
 const profilesSchema = z.object({ profiles: z.array(z.object({ _id: z.string(), name: z.string() })) });
 const accountsSchema = z.object({ accounts: z.array(z.object({
   _id: z.string(), platform: z.string(), profileId: z.union([z.string(), z.object({ _id: z.string() })]),
   platformUserId: z.string().optional(), username: z.string(), displayName: z.string().nullish(), isActive: z.boolean().optional(),
+  metadata: z.object({ instagramScopedId: z.string().optional() }).nullish(),
 })) });
 const webhooksSchema = z.object({ webhooks: z.array(z.object({ _id: z.string(), url: z.string() })) });
 const EVENTS = ['comment.received', 'message.received', 'message.read'];
@@ -17,7 +19,7 @@ export async function listProfiles(apiKey: string) {
 export async function listInstagramAccounts({ apiKey, profileId }: { apiKey: string; profileId: string }) {
   const data = accountsSchema.parse(await zernioRequest({ apiKey, path: `/accounts?profileId=${encodeURIComponent(profileId)}&platform=instagram` }));
   return data.accounts.filter(a => a.platform === 'instagram' && a.isActive !== false && a.platformUserId && (typeof a.profileId === 'string' ? a.profileId : a.profileId._id) === profileId)
-    .map(a => ({ id: a._id, instagramId: a.platformUserId!, username: a.username, name: a.displayName ?? null }));
+    .map(a => ({ id: a._id, instagramId: zernioInstagramId(a)!, username: a.username, name: a.displayName ?? null }));
 }
 
 export async function listWebhooks(apiKey: string) {

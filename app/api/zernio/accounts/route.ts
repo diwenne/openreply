@@ -17,16 +17,19 @@ export const POST = withZernioManagement(async ({ workspaceId }, request) => {
   await withConnectionLock(workspaceId, async tx => {
     const current = await tx.zernioConnection.findUnique({ where: { workspaceId } });
     if (!current || current.profileId !== connection.profileId || current.webhookId !== connection.webhookId || decryptToken(current.apiKey) !== connection.apiKey) throw new ConnectionError('Connection settings changed. Refresh and try again.');
-    const existing = await tx.instagramAccount.findUnique({ where: { instagramId: remote.instagramId } });
+    // Rows imported before the stored id changed are not found by the new
+    // instagramId, so also match this workspace's row for the same Zernio account.
+    const existing = await tx.instagramAccount.findUnique({ where: { instagramId: remote.instagramId } })
+      ?? await tx.instagramAccount.findFirst({ where: { workspaceId, provider: 'ZERNIO', zernioAccountId: remote.id } });
     if (existing && (existing.workspaceId !== workspaceId || existing.provider !== 'ZERNIO')) throw new ConnectionError('This Instagram account is already connected. Existing connections are not migrated automatically.', 409);
-    const data = { username: remote.username, name: remote.name, zernioAccountId: remote.id, webhookSubscribed: true };
+    const data = { instagramId: remote.instagramId, username: remote.username, name: remote.name, zernioAccountId: remote.id, webhookSubscribed: true };
     if (existing) {
       const updated = await tx.instagramAccount.updateMany({
         where: { id: existing.id, workspaceId, provider: 'ZERNIO' }, data,
       });
       if (!updated.count) throw new ConnectionError('This account connection changed. Refresh and try again.', 409);
     } else {
-      await tx.instagramAccount.create({ data: { ...data, workspaceId, instagramId: remote.instagramId, provider: 'ZERNIO', accessToken: '' } });
+      await tx.instagramAccount.create({ data: { ...data, workspaceId, provider: 'ZERNIO', accessToken: '' } });
     }
   });
   return NextResponse.json({ success: true });

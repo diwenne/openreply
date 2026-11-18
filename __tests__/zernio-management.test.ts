@@ -13,6 +13,22 @@ describe('Zernio workspace management', () => {
     ] });
     expect(await listInstagramAccounts({ apiKey: 'key', profileId: 'p' })).toEqual([{ id: 'a', instagramId: 'ig1', username: 'mine', name: null }]);
   });
+  it('uses the professional account id that webhooks and comments report, not the app-scoped platformUserId', async () => {
+    // Shape of a live Zernio /accounts response (ids replaced). The owner's own
+    // comments arrive with author id = metadata.instagramScopedId, so that is the
+    // id self-detection needs.
+    request.mockResolvedValue({ accounts: [{
+      _id: 'a', platform: 'instagram', profileId: { _id: 'p', name: 'Default' },
+      platformUserId: '26000000000000001', username: 'ourbrand', displayName: 'Our Brand', isActive: true,
+      metadata: {
+        instagramScopedId: '17841400000000001',
+        profileData: { id: '26000000000000001', username: 'ourbrand', displayName: 'Our Brand', extraData: { instagramScopedId: '17841400000000001' } },
+      },
+    }] });
+    expect(await listInstagramAccounts({ apiKey: 'key', profileId: 'p' })).toEqual([
+      { id: 'a', instagramId: '17841400000000001', username: 'ourbrand', name: 'Our Brand' },
+    ]);
+  });
   it('reuses only this installation webhook and preserves other subscriptions', async () => {
     request.mockResolvedValueOnce({ webhooks: [{ _id: 'other', url: 'https://customer.example/hook' }, { _id: 'ours', url: 'https://open.example/api/zernio/webhook/ws' }] }).mockResolvedValueOnce({});
     expect(await ensureWebhook({ apiKey: 'key', workspaceId: 'ws', secret: 'secret', baseUrl: 'https://open.example' })).toBe('ours');
