@@ -312,6 +312,21 @@ For your provider to reach local webhooks, run an HTTPS tunnel and set `NEXTAUTH
 ngrok http 3000
 ```
 
+### Run the whole stack in Docker
+
+To run OpenReply on one always-on machine (a home server, a VPS, your own PC) without Node installed, `docker-compose.app.yml` adds the web app, the worker and the cron scheduler on top of Postgres and Redis. All three run from the image built by the `Dockerfile`:
+
+```bash
+cp .env.example .env      # fill in the values, see "Environment variables"
+docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
+```
+
+- The web app is on port 3000. Point your tunnel or reverse proxy at it, and set `NEXTAUTH_URL` to that public URL.
+- Migrations run each time the web container starts.
+- `DATABASE_URL` and `REDIS_URL` from `.env` are replaced inside the containers by the compose service names, because `localhost` there is the container itself. If you changed the credentials in `docker-compose.yml`, set `DOCKER_DATABASE_URL` and `DOCKER_REDIS_URL` in `.env`.
+- The cron service runs `scripts/cron.sh`, which needs `CRON_SECRET`. Without it the Instagram token is never refreshed and expires after 60 days.
+- Every service restarts by itself after a reboot or a Docker restart. To deploy code changes, run the same `up -d --build` command again.
+
 ## Set it up with an AI assistant
 
 Open a clone of this repository in your coding assistant and paste the prompt below. Keep real credentials in your deployment’s secret settings or local `.env`, not committed files.

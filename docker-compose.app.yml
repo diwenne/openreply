@@ -1,0 +1,69 @@
+# OpenReply — run the whole stack in Docker: Postgres, Redis, the web app,
+# the DM worker and the cron scheduler.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
+#
+# This file adds the app services on top of docker-compose.yml (Postgres and
+# Redis). The web, worker and cron services share one image built from the
+# Dockerfile. Every service has `restart: unless-stopped`, so the stack comes
+# back by itself after a reboot or a Docker restart. To pick up code changes,
+# run the same command again.
+#
+# All app services read `.env` (copy it from .env.example). Inside the
+# containers, `localhost` is the container itself, so DATABASE_URL and
+# REDIS_URL are set here to the compose service names instead. The defaults
+# match the credentials in docker-compose.yml. If you change those, set
+# DOCKER_DATABASE_URL / DOCKER_REDIS_URL in .env.
+#
+# Database migrations run each time the web container starts, before the
+# server starts (see docs/deploy-dokploy.md, "Migrations must run at start").
+
+x-app: &app
+  build: .
+  image: openreply-app:local
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/openreply}
+    REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  web:
+    <<: *app
+    command: ["sh", "-c", "npx prisma migrate deploy && exec npm run start"]
+    ports:
+      - "3000:3000"
+    healthcheck:
+      # Liveness only: any HTTP answer counts. /api/health answers 503 while
+      # the worker heartbeat is missing, and that must not hold up the web
+      # app or the cron service.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(() => process.exit(0), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["npm", "run", "worker"]
+
+  cron:
+    <<: *app
+    command: ["sh", "scripts/cron.sh"]
+    # Calls the /api/cron routes with CRON_SECRET from .env.
+    environment:
+      CRON_BASE_URL: http://web:3000
+    depends_on:
+      web:
+        condition: service_healthy
