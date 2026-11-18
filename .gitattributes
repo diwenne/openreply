@@ -1,0 +1,4 @@
+# Shell scripts run inside the Linux container (scripts/cron.sh). A Windows
+# checkout with core.autocrlf would otherwise give them CRLF endings, and sh
+# fails on them with `set: Illegal option -`.
+*.sh text eol=lf
