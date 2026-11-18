@@ -11,6 +11,7 @@ import {
   sendDirectMessageWithLinkButton,
   getRecentMediaComments,
   getUserFollowStatus,
+  getUserInfo,
   getUserMedia,
 } from "@/lib/instagram/provider";
 import { zernioRequest } from "@/lib/zernio/client";
@@ -111,6 +112,27 @@ describe("Instagram provider boundary", () => {
     });
     expect(result[0].replies?.data?.[0].from?.id).toBe("ig");
     expect(fetchMock.mock.calls[1][0]).toContain("cursor=next");
+  });
+  it("reports the selected account's instagramScopedId as user_id, the id stored for it", async () => {
+    respond({
+      accounts: [
+        { _id: "another", platformUserId: "111", username: "someone", metadata: { instagramScopedId: "17840000000000001" } },
+        {
+          _id: "selected",
+          platformUserId: "26000000000000001",
+          username: "ourbrand",
+          displayName: "Our Brand",
+          followersCount: 3,
+          metadata: {
+            instagramScopedId: "17841400000000001",
+            profileData: { id: "26000000000000001", username: "ourbrand", extraData: { instagramScopedId: "17841400000000001" } },
+          },
+        },
+      ],
+    });
+    const info = await getUserInfo({ context });
+    expect(info.user_id).toBe("17841400000000001");
+    expect(info.username).toBe("ourbrand");
   });
   it("keeps unavailable follower status unknown", async () => {
     respond({ isFollower: null, unavailableReason: "consent_required" });

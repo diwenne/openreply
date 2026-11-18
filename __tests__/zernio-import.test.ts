@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  current: vi.fn(), existing: vi.fn(), create: vi.fn(), updateMany: vi.fn(),
+  current: vi.fn(), existing: vi.fn(), byZernioAccount: vi.fn(), create: vi.fn(), updateMany: vi.fn(),
 }));
 vi.mock('@/lib/zernio/route-handler', () => ({
   ConnectionError: class extends Error {},
@@ -14,7 +14,7 @@ vi.mock('@/lib/zernio/manage-remote', () => ({ listInstagramAccounts: async () =
 vi.mock('@/lib/zernio/lock-connection', () => ({
   withConnectionLock: async (_workspaceId: string, action: (tx: unknown) => Promise<void>) => action({
     zernioConnection: { findUnique: mocks.current },
-    instagramAccount: { findUnique: mocks.existing, create: mocks.create, updateMany: mocks.updateMany },
+    instagramAccount: { findUnique: mocks.existing, findFirst: mocks.byZernioAccount, create: mocks.create, updateMany: mocks.updateMany },
   }),
 }));
 import { POST } from '@/app/api/zernio/accounts/route';
@@ -24,6 +24,22 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.current.mockResolvedValue({ apiKey: 'key', profileId: 'profile', webhookId: 'hook' });
   mocks.existing.mockResolvedValue(null);
+  mocks.byZernioAccount.mockResolvedValue(null);
+});
+it('migrates a row saved under an earlier instagramId instead of creating a duplicate', async () => {
+  // The row predates the id fix: nothing is stored under the new id 'ig', but
+  // this workspace's Zernio row for the same remote account still exists.
+  mocks.byZernioAccount.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+    where.workspaceId === 'ours' && where.provider === 'ZERNIO' && where.zernioAccountId === 'remote'
+      ? { id: 'legacy', workspaceId: 'ours', provider: 'ZERNIO', instagramId: '26000000000000001' }
+      : null);
+  mocks.updateMany.mockResolvedValue({ count: 1 });
+  await POST(request);
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.updateMany).toHaveBeenCalledWith({
+    where: { id: 'legacy', workspaceId: 'ours', provider: 'ZERNIO' },
+    data: expect.objectContaining({ instagramId: 'ig', zernioAccountId: 'remote' }),
+  });
 });
 it('rejects an import validated using a replaced API key', async () => {
   mocks.current.mockResolvedValue({ apiKey: 'replacement', profileId: 'profile', webhookId: 'hook' });
